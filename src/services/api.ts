@@ -16,7 +16,12 @@ const API_BASE = '/api';
 
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('transdata_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return token
+    ? {
+        Authorization: `Bearer ${token}`,
+        'X-Auth-Token': token
+      }
+    : {};
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

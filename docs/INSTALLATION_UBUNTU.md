@@ -169,3 +169,35 @@ Kemudian reload Nginx dan PHP-FPM:
 sudo nginx -t && sudo systemctl restart nginx php8.3-fpm
 ```
 
+---
+
+## 10. Solusi: Login Berhasil Tapi Terlempar Kembali ke Halaman Login
+
+Jika login berhasil (username dan password benar) namun browser langsung mengembalikan Anda ke halaman login:
+
+### Penyebab Teknis:
+1. **Nginx Header Authorization Stripping**: Secara default, Nginx tidak meneruskan HTTP Header `Authorization` (yang memuat token JWT) ke PHP-FPM jika directive `fastcgi_param HTTP_AUTHORIZATION $http_authorization;` belum ditambahkan di file konfigurasi Nginx. Akibatnya, request validasi `/api/auth/me` mengembalikan status `401 Unauthorized` sehingga frontend membersihkan token dan kembali ke portal login.
+2. **Duplikasi Validasi Session**: Pada kode frontend sebelumnya, pemanggilan `checkStatus()` sesaat setelah login memicu validasi ulang yang terputus jika header terpotong.
+
+### Solusi:
+1. Pastikan baris `fastcgi_param HTTP_AUTHORIZATION $http_authorization;` telah ada di blok `/api` Nginx Anda:
+   ```nginx
+   location ^~ /api {
+       fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+       fastcgi_index index.php;
+       fastcgi_param SCRIPT_FILENAME /var/www/transdata-nms/backend/public/index.php;
+       fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+       include fastcgi_params;
+       fastcgi_read_timeout 60s;
+   }
+   ```
+2. Salin pembaruan backend dan build frontend:
+   ```bash
+   sudo cp backend/nginx-transdata.conf /etc/nginx/sites-available/transdata-nms
+   sudo cp backend/public/index.php /var/www/transdata-nms/backend/public/index.php
+   sudo cp backend/src/Auth.php /var/www/transdata-nms/backend/src/Auth.php
+   sudo cp -r dist/* /var/www/transdata-nms/dist/
+   sudo nginx -t && sudo systemctl restart nginx php8.3-fpm
+   ```
+
+

@@ -51,6 +51,44 @@ function errorResponse(string $message, int $status = 400, ?array $details = nul
     exit;
 }
 
+function getAuthorizationHeader(): ?string {
+    if (!empty($_SERVER['HTTP_AUTHORIZATION'])) {
+        return $_SERVER['HTTP_AUTHORIZATION'];
+    }
+    if (!empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+        return $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+    }
+    if (!empty($_SERVER['HTTP_X_AUTH_TOKEN'])) {
+        return 'Bearer ' . $_SERVER['HTTP_X_AUTH_TOKEN'];
+    }
+    if (!empty($_GET['token'])) {
+        return 'Bearer ' . $_GET['token'];
+    }
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        foreach ($headers as $key => $val) {
+            if (strcasecmp($key, 'Authorization') === 0) {
+                return $val;
+            }
+            if (strcasecmp($key, 'X-Auth-Token') === 0) {
+                return 'Bearer ' . $val;
+            }
+        }
+    }
+    if (function_exists('apache_request_headers')) {
+        $headers = apache_request_headers();
+        foreach ($headers as $key => $val) {
+            if (strcasecmp($key, 'Authorization') === 0) {
+                return $val;
+            }
+            if (strcasecmp($key, 'X-Auth-Token') === 0) {
+                return 'Bearer ' . $val;
+            }
+        }
+    }
+    return null;
+}
+
 // Router parsing
 $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '/';
 $method = strtoupper($_SERVER['REQUEST_METHOD']);
@@ -123,7 +161,7 @@ try {
     }
 
     // JWT Verification for protected endpoints
-    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? null;
+    $authHeader = getAuthorizationHeader();
     $currentUser = $auth->validateToken($authHeader);
     if (!$currentUser) {
         errorResponse('Sesi tidak valid atau telah kedaluwarsa. Silakan login kembali.', 401);

@@ -39,17 +39,17 @@ export default function App() {
       const status = await api.getSystemStatus();
       setSystemStatus(status);
 
-      // If admin exists, check if user has active session
-      if (status.has_admin_user) {
-        const token = localStorage.getItem('transdata_token');
-        if (token) {
-          try {
-            const meRes = await api.getMe();
+      // Check stored token if user is not already logged in
+      const token = localStorage.getItem('transdata_token');
+      if (status.has_admin_user && token) {
+        try {
+          const meRes = await api.getMe();
+          if (meRes.user) {
             setCurrentUser(meRes.user);
-          } catch {
-            localStorage.removeItem('transdata_token');
-            setCurrentUser(null);
           }
+        } catch {
+          localStorage.removeItem('transdata_token');
+          setCurrentUser(null);
         }
       }
     } catch (err) {
@@ -114,7 +114,6 @@ export default function App() {
       <LoginPage
         onLoginSuccess={(user) => {
           setCurrentUser(user);
-          checkStatus();
         }}
       />
     );

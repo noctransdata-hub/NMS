@@ -87,11 +87,15 @@ class Auth
 
     public function validateToken(?string $authHeader): ?array
     {
-        if (!$authHeader || !preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
+        if (!$authHeader) {
             return null;
         }
 
-        $token = $matches[1];
+        $token = trim($authHeader);
+        if (preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
+            $token = $matches[1];
+        }
+
         $parts = explode('.', $token);
         if (count($parts) !== 3) {
             return null;
