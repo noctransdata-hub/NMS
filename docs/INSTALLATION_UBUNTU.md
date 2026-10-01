@@ -135,3 +135,37 @@ sudo systemctl status transdata-poller.service
 4. Masuk ke Dashboard, Tambah Perangkat MikroTik / OLT / Switch nyata Anda.
 5. Lakukan uji Ping dan SNMP nyata langsung dari tombol menu perangkat.
 6. Buka GIS FTTH untuk memetakan jalur kabel feeder/distribusi serta ODC dan ODP.
+
+---
+
+## 9. Solusi Error 'HTTP 405 Method Not Allowed' saat Aktivasi Superadmin
+
+Jika Anda melihat pesan **`HTTP error 405`** atau **`405 Not Allowed`** saat menekan tombol "Aktifkan Superadmin Transdata":
+
+### Penyebab Teknis:
+Nginx secara default **menolak method POST ke file statis HTML**. Jika konfigurasi Nginx tidak mengoper request `/api/*` langsung ke FastCGI PHP-FPM, request `POST /api/auth/setup-admin` akan jatuh (*fallback*) ke `location / { try_files $uri $uri/ /index.html; }`. Karena `/index.html` adalah file statis, Nginx membalas dengan status **`HTTP 405 Method Not Allowed`**.
+
+### Solusi Cepat:
+Pastikan blok `location ^~ /api` di `/etc/nginx/sites-available/transdata-nms` dikonfigurasi sebagai berikut (menggunakan directive `^~` agar tidak tertimpa regex static):
+
+```nginx
+    # Pastikan request /api langsung diarahkan ke PHP-FPM
+    location ^~ /api {
+        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock; # atau php8.2-fpm.sock
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME /var/www/transdata-nms/backend/public/index.php;
+        fastcgi_param REQUEST_URI $request_uri;
+        fastcgi_param QUERY_STRING $query_string;
+        fastcgi_param REQUEST_METHOD $request_method;
+        fastcgi_param CONTENT_TYPE $content_type;
+        fastcgi_param CONTENT_LENGTH $content_length;
+        include fastcgi_params;
+        fastcgi_read_timeout 60s;
+    }
+```
+
+Kemudian reload Nginx dan PHP-FPM:
+```bash
+sudo nginx -t && sudo systemctl restart nginx php8.3-fpm
+```
+

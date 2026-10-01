@@ -477,6 +477,29 @@ sudo tail -f /var/log/nginx/error.log
 sudo tail -f /var/log/php8.3-fpm.log
 ```
 
+### Troubleshooting: Error 'HTTP 405 Method Not Allowed' saat Aktivasi Superadmin
+Jika muncul pesan **`HTTP error 405`** saat menekan tombol *Aktifkan Superadmin Transdata*:
+1. **Penyebab**: Nginx secara default menolak method `POST` ke file statis HTML. Jika request `/api/auth/setup-admin` tidak di-forward ke FastCGI PHP-FPM, request akan jatuh ke `location / { try_files $uri $uri/ /index.html; }`, dan Nginx melempar error `405 Not Allowed`.
+2. **Solusi**: Pastikan block `location ^~ /api` di `/etc/nginx/sites-available/transdata-nms` menggunakan prefix `^~` dan langsung mengoper ke `fastcgi_pass`:
+   ```nginx
+   location ^~ /api {
+       fastcgi_pass unix:/var/run/php/php8.3-fpm.sock; # atau php8.2-fpm.sock
+       fastcgi_index index.php;
+       fastcgi_param SCRIPT_FILENAME /var/www/transdata-nms/backend/public/index.php;
+       fastcgi_param REQUEST_URI $request_uri;
+       fastcgi_param QUERY_STRING $query_string;
+       fastcgi_param REQUEST_METHOD $request_method;
+       fastcgi_param CONTENT_TYPE $content_type;
+       fastcgi_param CONTENT_LENGTH $content_length;
+       include fastcgi_params;
+       fastcgi_read_timeout 60s;
+   }
+   ```
+   Lalu restart Nginx dan PHP-FPM:
+   ```bash
+   sudo nginx -t && sudo systemctl restart nginx php8.3-fpm
+   ```
+
 ### Troubleshooting: Status Perangkat Tertulis Offline / Unreachable
 1. Uji ping manual dari command line server:
    ```bash

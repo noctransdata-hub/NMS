@@ -53,8 +53,9 @@ function errorResponse(string $message, int $status = 400, ?array $details = nul
 
 // Router parsing
 $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '/';
-$method = $_SERVER['REQUEST_METHOD'];
+$method = strtoupper($_SERVER['REQUEST_METHOD']);
 $path = preg_replace('#^/api#', '', $requestUri);
+$path = rtrim($path, '/') ?: '/';
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
 try {
