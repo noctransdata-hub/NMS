@@ -91,8 +91,7 @@ try {
 
     // 3. Kebijakan Retensi Histori Trafik (Hapus data lebih tua dari retention days)
     $retentionDays = 30;
-    $db->prepare("DELETE FROM interface_traffic_samples WHERE sample_time < DATE_SUB(NOW(), INTERVAL :days DAY)")
-       ->execute([':days' => $retentionDays]);
+    $db->exec("DELETE FROM interface_traffic_samples WHERE sample_time < DATE_SUB(NOW(), INTERVAL " . (int)$retentionDays . " DAY)");
 
     echo "[" . date('Y-m-d H:i:s') . "] Siklus polling dan pembersihan retensi selesai.\n";
 

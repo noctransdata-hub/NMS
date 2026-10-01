@@ -54,9 +54,12 @@ class Auth
             SELECT u.*, r.name as role_name 
             FROM users u
             JOIN roles r ON u.role_id = r.id
-            WHERE (u.username = :user OR u.email = :user) AND u.is_active = 1
+            WHERE (u.username = :user_name OR u.email = :user_email) AND u.is_active = 1
         ");
-        $stmt->execute([':user' => $username]);
+        $stmt->execute([
+            ':user_name'  => $username,
+            ':user_email' => $username
+        ]);
         $user = $stmt->fetch();
 
         if (!$user || !password_verify($password, $user['password_hash'])) {

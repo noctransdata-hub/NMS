@@ -28,8 +28,11 @@ class GisService
         }
 
         if (!empty($filters['search'])) {
-            $sql .= " AND (o.name LIKE :q OR o.code LIKE :q OR o.address LIKE :q)";
-            $params[':q'] = '%' . $filters['search'] . '%';
+            $sql .= " AND (o.name LIKE :q1 OR o.code LIKE :q2 OR o.address LIKE :q3)";
+            $searchVal = '%' . $filters['search'] . '%';
+            $params[':q1'] = $searchVal;
+            $params[':q2'] = $searchVal;
+            $params[':q3'] = $searchVal;
         }
 
         $sql .= " ORDER BY o.created_at ASC";
