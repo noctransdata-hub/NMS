@@ -14,8 +14,12 @@ import { FtthObject, FtthCable, TopologyTraceResult } from '../types/gis';
 
 const API_BASE = '/api';
 
+function getAuthToken(): string | null {
+  return localStorage.getItem('transdata_token');
+}
+
 function getAuthHeader(): Record<string, string> {
-  const token = localStorage.getItem('transdata_token');
+  const token = getAuthToken();
   return token
     ? {
         Authorization: `Bearer ${token}`,
@@ -25,13 +29,20 @@ function getAuthHeader(): Record<string, string> {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const token = getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
     ...getAuthHeader(),
     ...options.headers
   };
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  let url = `${API_BASE}${endpoint}`;
+  if (token && !endpoint.includes('auth/login') && !endpoint.includes('auth/setup-admin')) {
+    const sep = url.includes('?') ? '&' : '?';
+    url = `${url}${sep}token=${encodeURIComponent(token)}`;
+  }
+
+  const response = await fetch(url, {
     ...options,
     headers
   });
@@ -51,11 +62,25 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
-  login: (payload: { username: string; password: string }) =>
-    request<{ success: boolean; token: string; user: User }>('/auth/login', {
+  login: async (payload: { username: string; password: string }) => {
+    const res = await request<{ success: boolean; token: string; user: User }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(payload)
-    }),
+    });
+    if (res.token) {
+      localStorage.setItem('transdata_token', res.token);
+      try {
+        document.cookie = `transdata_token=${encodeURIComponent(res.token)}; path=/; max-age=86400; SameSite=Lax`;
+      } catch {}
+    }
+    return res;
+  },
+  logout: () => {
+    localStorage.removeItem('transdata_token');
+    try {
+      document.cookie = 'transdata_token=; path=/; max-age=0; SameSite=Lax';
+    } catch {}
+  },
   getMe: () => request<{ success: boolean; user: User }>('/auth/me'),
 
   // Dashboard Summary

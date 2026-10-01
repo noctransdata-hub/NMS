@@ -13,7 +13,7 @@ header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -63,6 +63,9 @@ function getAuthorizationHeader(): ?string {
     }
     if (!empty($_GET['token'])) {
         return 'Bearer ' . $_GET['token'];
+    }
+    if (!empty($_COOKIE['transdata_token'])) {
+        return 'Bearer ' . $_COOKIE['transdata_token'];
     }
     if (function_exists('getallheaders')) {
         $headers = getallheaders();
@@ -162,6 +165,9 @@ try {
 
     // JWT Verification for protected endpoints
     $authHeader = getAuthorizationHeader();
+    if (!$authHeader) {
+        errorResponse('Token otentikasi tidak ditemukan. Header Authorization, parameter ?token=, atau cookie sesi tidak terdeteksi.', 401);
+    }
     $currentUser = $auth->validateToken($authHeader);
     if (!$currentUser) {
         errorResponse('Sesi tidak valid atau telah kedaluwarsa. Silakan login kembali.', 401);

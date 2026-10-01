@@ -102,16 +102,28 @@ class Auth
         }
 
         [$headerB64, $payloadB64, $sigB64] = $parts;
-        $secret = $this->config['app']['jwt_secret'] ?? 'transdata_jwt_secret';
+        $secret = !empty($this->config['app']['jwt_secret']) ? $this->config['app']['jwt_secret'] : 'transdata_jwt_secret';
         $expectedSig = hash_hmac('sha256', "$headerB64.$payloadB64", $secret, true);
         $expectedB64 = strtr(rtrim(base64_encode($expectedSig), '='), '+/', '-_');
 
-        if (!hash_equals($expectedB64, $sigB64)) {
+        if (!hash_equals($expectedB64, rtrim($sigB64, '='))) {
             return null;
         }
 
-        $payload = json_decode(base64_decode(strtr($payloadB64, '-_', '+/')), true);
-        if (!$payload || ($payload['exp'] ?? 0) < time()) {
+        $paddedPayload = $payloadB64;
+        $remainder = strlen($paddedPayload) % 4;
+        if ($remainder) {
+            $paddedPayload .= str_repeat('=', 4 - $remainder);
+        }
+
+        $decodedJson = base64_decode(strtr($paddedPayload, '-_', '+/'));
+        if (!$decodedJson) {
+            return null;
+        }
+
+        $payload = json_decode($decodedJson, true);
+        // Allow 60 seconds clock skew leeway
+        if (!$payload || (($payload['exp'] ?? 0) + 60) < time()) {
             return null;
         }
 
@@ -133,7 +145,7 @@ class Auth
 
     private function generateToken(array $data): string
     {
-        $secret = $this->config['app']['jwt_secret'] ?? 'transdata_jwt_secret';
+        $secret = !empty($this->config['app']['jwt_secret']) ? $this->config['app']['jwt_secret'] : 'transdata_jwt_secret';
         $header = ['alg' => 'HS256', 'typ' => 'JWT'];
         $payload = array_merge($data, [
             'iat' => time(),
