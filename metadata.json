@@ -1,0 +1,6 @@
+{
+  "name": "Transdata NMS - ISP Network Management System & GIS FTTH",
+  "description": "Enterprise Network Management System untuk ISP Transdata dengan monitoring real-time SNMP, MikroTik RouterOS, GenieACS NBI, ICMP ping, dan GIS Pemetaan Fiber Optik FTTH interaktif.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

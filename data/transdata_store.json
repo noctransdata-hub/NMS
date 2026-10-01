@@ -1,0 +1,22 @@
+{
+  "users": [],
+  "devices": [],
+  "device_interfaces": {},
+  "traffic_samples": [],
+  "ftth_objects": [],
+  "ftth_cables": [],
+  "ftth_customers": [],
+  "alarms": [],
+  "audit_logs": [],
+  "settings": {
+    "isp_name": "ISP Transdata",
+    "snmp_default_community": "public",
+    "snmp_default_timeout": "3",
+    "snmp_default_retries": "2",
+    "genieacs_nbi_url": "http://127.0.0.1:7557",
+    "ping_default_count": "4",
+    "gis_default_lat": "-6.2088",
+    "gis_default_lng": "106.8456",
+    "gis_default_zoom": "14"
+  }
+}

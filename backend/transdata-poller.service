@@ -1,0 +1,15 @@
+[Unit]
+Description=Transdata NMS Background Network Poller Daemon
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/transdata-nms/backend
+ExecStart=/usr/bin/php /var/www/transdata-nms/backend/cli/poller.php
+Restart=always
+RestartSec=60s
+
+[Install]
+WantedBy=multi-user.target
