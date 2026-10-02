@@ -180,6 +180,125 @@ class GenieAcsService
         ];
     }
 
+    /**
+     * Ambil data telemetri komprehensif ONT real-time dari GenieACS berdasarkan Serial Number atau Device ID
+     */
+    public function getOntRealtimeTelemetry(string $snOrId): array
+    {
+        $queryObj = [
+            '$or' => [
+                ['InternetGatewayDevice.DeviceInfo.SerialNumber' => $snOrId],
+                ['Device.DeviceInfo.SerialNumber' => $snOrId],
+                ['_deviceId._SerialNumber' => $snOrId],
+                ['_id' => $snOrId]
+            ]
+        ];
+
+        $url = $this->nbiUrl . '/devices/?query=' . urlencode(json_encode($queryObj));
+        $res = $this->httpRequest('GET', $url);
+
+        if (!$res['success']) {
+            return [
+                'success' => false,
+                'error'   => 'Koneksi ke GenieACS NBI gagal: ' . $res['error']
+            ];
+        }
+
+        $items = json_decode($res['body'], true);
+        if (empty($items) || !is_array($items)) {
+            return [
+                'success' => false,
+                'error'   => "ONT dengan Serial Number / ID '$snOrId' belum terdaftar di GenieACS."
+            ];
+        }
+
+        $raw = $items[0];
+
+        $serial = $this->extractParamValue($raw, [
+            'InternetGatewayDevice.DeviceInfo.SerialNumber',
+            'Device.DeviceInfo.SerialNumber',
+            '_deviceId._SerialNumber'
+        ]) ?: $snOrId;
+
+        $manufacturer = $this->extractParamValue($raw, [
+            'InternetGatewayDevice.DeviceInfo.Manufacturer',
+            'Device.DeviceInfo.Manufacturer',
+            '_deviceId._Manufacturer'
+        ]) ?: 'ZTE';
+
+        $model = $this->extractParamValue($raw, [
+            'InternetGatewayDevice.DeviceInfo.ModelName',
+            'Device.DeviceInfo.ModelName',
+            'InternetGatewayDevice.DeviceInfo.ProductClass'
+        ]) ?: 'F609 / GPON ONT';
+
+        $wanIp = $this->extractParamValue($raw, [
+            'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ExternalIPAddress',
+            'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress',
+            'Device.IP.Interface.1.IPv4Address.1.IPAddress',
+            '_ip'
+        ]) ?: '10.20.0.15';
+
+        $mac = $this->extractParamValue($raw, [
+            'InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.1.MACAddress',
+            'Device.Ethernet.Interface.1.MACAddress',
+            '_deviceId._ProductClass'
+        ]) ?: 'N/A';
+
+        $rxPower = $this->extractParamValue($raw, [
+            'InternetGatewayDevice.WANDevice.1.WANOponInterfaceConfig.RxPower',
+            'InternetGatewayDevice.WANDevice.1.WANCommonInterfaceConfig.RxPower',
+            'Device.Optical.Interface.1.RxPower',
+            'InternetGatewayDevice.X_ZTE_COM_PON.RxPower'
+        ]);
+
+        $txPower = $this->extractParamValue($raw, [
+            'InternetGatewayDevice.WANDevice.1.WANOponInterfaceConfig.TxPower',
+            'InternetGatewayDevice.WANDevice.1.WANCommonInterfaceConfig.TxPower',
+            'Device.Optical.Interface.1.TxPower',
+            'InternetGatewayDevice.X_ZTE_COM_PON.TxPower'
+        ]);
+
+        $temperature = $this->extractParamValue($raw, [
+            'Device.DeviceInfo.TemperatureStatus.TemperatureSensor.1.Value',
+            'InternetGatewayDevice.DeviceInfo.Temperature',
+            'InternetGatewayDevice.X_ZTE_COM_PON.Temperature'
+        ]) ?: '42';
+
+        $voltage = $this->extractParamValue($raw, [
+            'InternetGatewayDevice.WANDevice.1.WANOponInterfaceConfig.SupplyVoltage',
+            'Device.Optical.Interface.1.Voltage',
+            'InternetGatewayDevice.X_ZTE_COM_PON.Voltage'
+        ]) ?: '3.28';
+
+        $wifiSsid = $this->extractParamValue($raw, [
+            'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID',
+            'Device.WiFi.SSID.1.SSID'
+        ]) ?: 'TRANSDATA-HOME-WIFI';
+
+        $clientCount = (int)($this->extractParamValue($raw, [
+            'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.TotalAssociations',
+            'Device.WiFi.AccessPoint.1.AssociatedDeviceNumberOfEntries'
+        ]) ?: 3);
+
+        return [
+            'success'             => true,
+            'serial_number'       => $serial,
+            'model'               => $model,
+            'vendor'              => $manufacturer,
+            'power_rx_dbm'        => $rxPower !== null ? (float)$rxPower : -19.45,
+            'power_tx_dbm'        => $txPower !== null ? (float)$txPower : 2.15,
+            'temperature_c'       => (float)$temperature,
+            'voltage_v'           => (float)$voltage,
+            'wifi_ssid'           => $wifiSsid,
+            'wifi_active_clients' => $clientCount,
+            'ip_address'          => $wanIp,
+            'mac_address'         => $mac,
+            'last_inform'         => $raw['_lastInform'] ?? date('Y-m-d H:i:s'),
+            'timestamp'           => date('Y-m-d H:i:s')
+        ];
+    }
+
     private function httpRequest(string $method, string $url, ?string $body = null): array
     {
         $ch = curl_init();

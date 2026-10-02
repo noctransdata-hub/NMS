@@ -184,4 +184,50 @@ CREATE TABLE IF NOT EXISTS `system_settings` (
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- --------------------------------------------------------------------
+-- 9. Service Packages (Paket Layanan Internet)
+-- --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `packages` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `name` VARCHAR(100) NOT NULL UNIQUE,
+    `price` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    `bandwidth` VARCHAR(100) NOT NULL,
+    `description` VARCHAR(255) NULL,
+    `mikrotik_profile` VARCHAR(100) NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------------------
+-- 10. Customers (Data Pelanggan ISP & Relasi ODP/ONT)
+-- --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `customers` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `customer_number` VARCHAR(50) NOT NULL UNIQUE,
+    `name` VARCHAR(120) NOT NULL,
+    `nik` VARCHAR(30) NOT NULL,
+    `address` TEXT NOT NULL,
+    `latitude` DECIMAL(10, 8) NULL,
+    `longitude` DECIMAL(11, 8) NULL,
+    `phone_number` VARCHAR(30) NOT NULL,
+    `email` VARCHAR(120) NULL,
+    `package_id` INT NOT NULL,
+    `odp_id` VARCHAR(36) NULL,
+    `ont_sn` VARCHAR(80) NULL,
+    `ont_model` VARCHAR(100) NULL,
+    `pppoe_username` VARCHAR(80) NULL UNIQUE,
+    `pppoe_password` VARCHAR(80) NULL,
+    `status` ENUM('ACTIVE', 'ISOLIR', 'DOWN') NOT NULL DEFAULT 'ACTIVE',
+    `isolir_reason` VARCHAR(255) NULL,
+    `isolir_at` TIMESTAMP NULL,
+    `notes` TEXT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_cust_package` (`package_id`),
+    INDEX `idx_cust_odp` (`odp_id`),
+    INDEX `idx_cust_sn` (`ont_sn`),
+    INDEX `idx_cust_status` (`status`),
+    CONSTRAINT `fk_cust_package` FOREIGN KEY (`package_id`) REFERENCES `packages` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

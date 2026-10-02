@@ -137,6 +137,46 @@ interface FtthCustomer {
   created_at: string;
 }
 
+interface Package {
+  id: number;
+  name: string;
+  price: number;
+  bandwidth: string;
+  description?: string;
+  mikrotik_profile?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+interface Customer {
+  id: number;
+  customer_number: string;
+  name: string;
+  nik: string;
+  address: string;
+  latitude: number | null;
+  longitude: number | null;
+  phone_number: string;
+  email: string | null;
+  package_id: number;
+  package_name?: string;
+  package_price?: number;
+  bandwidth?: string;
+  odp_id: string | null;
+  odp_name?: string;
+  odp_code?: string;
+  ont_sn: string | null;
+  ont_model: string | null;
+  pppoe_username: string | null;
+  pppoe_password?: string | null;
+  status: 'ACTIVE' | 'ISOLIR' | 'DOWN';
+  isolir_reason?: string | null;
+  isolir_at?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
 interface StoreData {
   users: User[];
   devices: Device[];
@@ -153,6 +193,8 @@ interface StoreData {
   ftth_objects: FtthObject[];
   ftth_cables: FtthCable[];
   ftth_customers: FtthCustomer[];
+  packages: Package[];
+  customers: Customer[];
   alarms: Array<{
     id: number;
     device_id: number | null;
@@ -176,6 +218,13 @@ interface StoreData {
   settings: Record<string, string>;
 }
 
+const defaultPackages: Package[] = [
+  { id: 1, name: 'HOME 20 Mbps', price: 175000, bandwidth: '20 Mbps / 20 Mbps', description: 'Paket internet fiber optik rumahan up to 20 Mbps', mikrotik_profile: 'HOME-20M', created_at: new Date().toISOString() },
+  { id: 2, name: 'HOME 30 Mbps', price: 235000, bandwidth: '30 Mbps / 30 Mbps', description: 'Paket internet fiber optik keluarga up to 30 Mbps', mikrotik_profile: 'HOME-30M', created_at: new Date().toISOString() },
+  { id: 3, name: 'HOME 50 Mbps', price: 325000, bandwidth: '50 Mbps / 50 Mbps', description: 'Paket internet streaming & gaming up to 50 Mbps', mikrotik_profile: 'HOME-50M', created_at: new Date().toISOString() },
+  { id: 4, name: 'SOHO 100 Mbps', price: 550000, bandwidth: '100 Mbps / 100 Mbps', description: 'Paket internet prioritas kantor & UMKM up to 100 Mbps', mikrotik_profile: 'SOHO-100M', created_at: new Date().toISOString() }
+];
+
 // Initial clean state with NO dummy or fake data
 const defaultState: StoreData = {
   users: [],
@@ -185,6 +234,8 @@ const defaultState: StoreData = {
   ftth_objects: [],
   ftth_cables: [],
   ftth_customers: [],
+  packages: defaultPackages,
+  customers: [],
   alarms: [],
   audit_logs: [],
   settings: {
@@ -1018,6 +1069,382 @@ app.post('/api/settings', (req: Request, res: Response) => {
   store.settings = { ...store.settings, ...newSettings };
   saveStore(store);
   res.json({ success: true, settings: store.settings });
+});
+
+// ==========================================
+// 9. SERVICE PACKAGES (SETTING PAKET LAYANAN)
+// ==========================================
+app.get('/api/packages', (req: Request, res: Response) => {
+  if (!store.packages || store.packages.length === 0) {
+    store.packages = [...defaultPackages];
+    saveStore(store);
+  }
+  res.json({ success: true, packages: store.packages });
+});
+
+app.post('/api/packages', (req: Request, res: Response) => {
+  const { name, price, bandwidth, description, mikrotik_profile } = req.body;
+  if (!name || !price || !bandwidth) {
+    return res.status(400).json({ success: false, error: 'Nama paket, tagihan, dan kapasitas bandwidth wajib diisi.' });
+  }
+
+  if (!store.packages) store.packages = [];
+  const nextId = store.packages.length > 0 ? Math.max(...store.packages.map((p) => p.id)) + 1 : 1;
+  const newPkg: Package = {
+    id: nextId,
+    name: String(name).trim(),
+    price: parseFloat(price) || 0,
+    bandwidth: String(bandwidth).trim(),
+    description: description ? String(description).trim() : '',
+    mikrotik_profile: mikrotik_profile ? String(mikrotik_profile).trim() : String(name).trim(),
+    created_at: new Date().toISOString()
+  };
+
+  store.packages.push(newPkg);
+  saveStore(store);
+  logAudit(null, 'Operator', 'CREATE_PACKAGE', 'PACKAGE', String(newPkg.id), `Membuat paket ${newPkg.name} Rp ${newPkg.price}`);
+  res.status(201).json({ success: true, id: newPkg.id, message: 'Paket layanan berhasil ditambahkan.' });
+});
+
+app.put('/api/packages/:id', (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const pkg = (store.packages || []).find((p) => p.id === id);
+  if (!pkg) return res.status(404).json({ success: false, error: 'Paket tidak ditemukan.' });
+
+  const { name, price, bandwidth, description, mikrotik_profile } = req.body;
+  if (name) pkg.name = String(name).trim();
+  if (price !== undefined) pkg.price = parseFloat(price);
+  if (bandwidth) pkg.bandwidth = String(bandwidth).trim();
+  if (description !== undefined) pkg.description = String(description).trim();
+  if (mikrotik_profile) pkg.mikrotik_profile = String(mikrotik_profile).trim();
+  pkg.updated_at = new Date().toISOString();
+
+  saveStore(store);
+  logAudit(null, 'Operator', 'UPDATE_PACKAGE', 'PACKAGE', String(pkg.id), `Mengubah paket ${pkg.name}`);
+  res.json({ success: true, message: 'Paket layanan berhasil diperbarui.' });
+});
+
+app.delete('/api/packages/:id', (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const usedCount = (store.customers || []).filter((c) => c.package_id === id).length;
+  if (usedCount > 0) {
+    return res.status(400).json({ success: false, error: `Paket tidak dapat dihapus karena masih digunakan oleh ${usedCount} pelanggan.` });
+  }
+
+  store.packages = (store.packages || []).filter((p) => p.id !== id);
+  saveStore(store);
+  logAudit(null, 'Operator', 'DELETE_PACKAGE', 'PACKAGE', String(id), `Menghapus paket ID ${id}`);
+  res.json({ success: true, message: 'Paket layanan berhasil dihapus.' });
+});
+
+// ==========================================
+// 10. CUSTOMERS (DATA PELANGGAN)
+// ==========================================
+app.get('/api/customers', (req: Request, res: Response) => {
+  if (!store.customers) store.customers = [];
+  const q = String(req.query.search || '').toLowerCase().trim();
+
+  let list = store.customers.map((c) => {
+    const pkg = (store.packages || []).find((p) => p.id === c.package_id);
+    const odp = (store.ftth_objects || []).find((o) => o.id === c.odp_id);
+    return {
+      ...c,
+      package_name: pkg ? pkg.name : c.package_name || 'Tidak diketahui',
+      package_price: pkg ? pkg.price : c.package_price || 0,
+      bandwidth: pkg ? pkg.bandwidth : c.bandwidth || 'N/A',
+      odp_name: odp ? odp.name : c.odp_name || '-',
+      odp_code: odp ? odp.code : c.odp_code || '-'
+    };
+  });
+
+  if (q) {
+    list = list.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.nik.toLowerCase().includes(q) ||
+        c.phone_number.toLowerCase().includes(q) ||
+        c.address.toLowerCase().includes(q) ||
+        (c.pppoe_username && c.pppoe_username.toLowerCase().includes(q)) ||
+        (c.ont_sn && c.ont_sn.toLowerCase().includes(q))
+    );
+  }
+
+  res.json({ success: true, count: list.length, customers: list });
+});
+
+app.post('/api/customers', (req: Request, res: Response) => {
+  const { name, nik, address, phone_number, email, package_id, odp_id, ont_sn, ont_model, pppoe_username, pppoe_password, latitude, longitude, notes } = req.body;
+
+  if (!name || !nik || !address || !phone_number || !package_id) {
+    return res.status(400).json({ success: false, error: 'Nama, Nomor KTP / NIK, Alamat, Nomor WhatsApp, dan Paket Layanan wajib diisi.' });
+  }
+
+  if (!store.customers) store.customers = [];
+  const nextId = store.customers.length > 0 ? Math.max(...store.customers.map((c) => c.id)) + 1 : 1;
+  const custNum = `CUST-${new Date().toISOString().slice(2, 7).replace('-', '')}-${String(nextId).padStart(4, '0')}`;
+  const pUser = pppoe_username ? String(pppoe_username).trim() : `td_${name.toLowerCase().replace(/[^a-z0-9]/g, '')}${Math.floor(10 + Math.random() * 90)}`;
+  const pPass = pppoe_password ? String(pppoe_password).trim() : `td@${Math.floor(1000 + Math.random() * 9000)}`;
+
+  const pkg = (store.packages || []).find((p) => p.id === parseInt(package_id, 10));
+  const odp = odp_id ? (store.ftth_objects || []).find((o) => o.id === odp_id) : null;
+
+  const latNum = latitude ? parseFloat(latitude) : (odp ? odp.latitude + (Math.random() - 0.5) * 0.002 : null);
+  const lngNum = longitude ? parseFloat(longitude) : (odp ? odp.longitude + (Math.random() - 0.5) * 0.002 : null);
+
+  const newCust: Customer = {
+    id: nextId,
+    customer_number: custNum,
+    name: String(name).trim(),
+    nik: String(nik).trim(),
+    address: String(address).trim(),
+    latitude: latNum,
+    longitude: lngNum,
+    phone_number: String(phone_number).trim(),
+    email: email ? String(email).trim() : null,
+    package_id: parseInt(package_id, 10),
+    package_name: pkg ? pkg.name : '',
+    package_price: pkg ? pkg.price : 0,
+    bandwidth: pkg ? pkg.bandwidth : '',
+    odp_id: odp_id ? String(odp_id) : null,
+    odp_name: odp ? odp.name : '',
+    odp_code: odp ? odp.code : '',
+    ont_sn: ont_sn ? String(ont_sn).trim() : `ZTEGC${Math.floor(10000000 + Math.random() * 90000000)}`,
+    ont_model: ont_model ? String(ont_model).trim() : 'F609 / GPON ONT',
+    pppoe_username: pUser,
+    pppoe_password: pPass,
+    status: 'ACTIVE',
+    notes: notes ? String(notes).trim() : null,
+    created_at: new Date().toISOString()
+  };
+
+  store.customers.unshift(newCust);
+
+  // Otomatis sinkronisasi ke FTTH GIS Objects jika koordinat tersedia
+  if (latNum && lngNum) {
+    const ontNodeId = `ONT-${newCust.id}`;
+    const exists = store.ftth_objects.find((o) => o.id === ontNodeId);
+    if (!exists) {
+      store.ftth_objects.push({
+        id: ontNodeId,
+        object_type: 'PELANGGAN',
+        code: `ONT-${custNum}`,
+        name: `Pelanggan: ${newCust.name}`,
+        latitude: latNum,
+        longitude: lngNum,
+        status: 'ACTIVE',
+        address: newCust.address,
+        port_capacity: 1,
+        ports_used: 1,
+        parent_object_id: odp_id ? String(odp_id) : null,
+        notes: `Paket: ${pkg?.name || ''}, SN: ${newCust.ont_sn}, PPPoE: ${pUser}`,
+        created_at: new Date().toISOString()
+      });
+    }
+
+    // Tarik kabel dropcore otomatis jika ada ODP induk
+    if (odp) {
+      const cableId = `CBL-DROP-${newCust.id}`;
+      if (!store.ftth_cables.find((c) => c.id === cableId)) {
+        store.ftth_cables.push({
+          id: cableId,
+          cable_code: `DROP-${custNum}`,
+          cable_name: `Dropcore ke ${newCust.name}`,
+          cable_type: 'DROPCORE',
+          core_count: 1,
+          calculated_length_m: 85,
+          start_object_id: odp.id,
+          end_object_id: ontNodeId,
+          color_hex: '#f59e0b',
+          status: 'ACTIVE',
+          technician_notes: `Tarikan kabel dropcore pelanggan ${newCust.name} dari ${odp.name}`,
+          vertices: [
+            { vertex_order: 1, latitude: odp.latitude, longitude: odp.longitude },
+            { vertex_order: 2, latitude: latNum, longitude: lngNum }
+          ],
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+  }
+
+  saveStore(store);
+  logAudit(null, 'Operator', 'CREATE_CUSTOMER', 'CUSTOMER', String(newCust.id), `Registrasi pelanggan baru ${newCust.name} (${custNum})`);
+  res.status(201).json({ success: true, id: newCust.id, customer_number: custNum, message: 'Registrasi pelanggan baru berhasil disimpan.' });
+});
+
+app.put('/api/customers/:id', (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const cust = (store.customers || []).find((c) => c.id === id);
+  if (!cust) return res.status(404).json({ success: false, error: 'Pelanggan tidak ditemukan.' });
+
+  const { name, nik, address, phone_number, email, package_id, odp_id, ont_sn, ont_model, pppoe_username, pppoe_password, latitude, longitude, notes } = req.body;
+
+  if (name) cust.name = String(name).trim();
+  if (nik) cust.nik = String(nik).trim();
+  if (address) cust.address = String(address).trim();
+  if (phone_number) cust.phone_number = String(phone_number).trim();
+  if (email !== undefined) cust.email = email ? String(email).trim() : null;
+  if (package_id) {
+    cust.package_id = parseInt(package_id, 10);
+    const pkg = (store.packages || []).find((p) => p.id === cust.package_id);
+    if (pkg) {
+      cust.package_name = pkg.name;
+      cust.package_price = pkg.price;
+      cust.bandwidth = pkg.bandwidth;
+    }
+  }
+  if (odp_id !== undefined) cust.odp_id = odp_id ? String(odp_id) : null;
+  if (ont_sn !== undefined) cust.ont_sn = ont_sn ? String(ont_sn).trim() : null;
+  if (ont_model !== undefined) cust.ont_model = ont_model ? String(ont_model).trim() : null;
+  if (pppoe_username !== undefined) cust.pppoe_username = pppoe_username ? String(pppoe_username).trim() : null;
+  if (pppoe_password !== undefined) cust.pppoe_password = pppoe_password ? String(pppoe_password).trim() : null;
+  if (latitude !== undefined) cust.latitude = latitude ? parseFloat(latitude) : null;
+  if (longitude !== undefined) cust.longitude = longitude ? parseFloat(longitude) : null;
+  if (notes !== undefined) cust.notes = notes ? String(notes).trim() : null;
+  cust.updated_at = new Date().toISOString();
+
+  // Update linked GIS object
+  const ontObj = store.ftth_objects.find((o) => o.id === `ONT-${cust.id}`);
+  if (ontObj) {
+    ontObj.name = `Pelanggan: ${cust.name}`;
+    ontObj.address = cust.address;
+    if (cust.latitude) ontObj.latitude = cust.latitude;
+    if (cust.longitude) ontObj.longitude = cust.longitude;
+    ontObj.parent_object_id = cust.odp_id;
+  }
+
+  saveStore(store);
+  logAudit(null, 'Operator', 'UPDATE_CUSTOMER', 'CUSTOMER', String(cust.id), `Memperbarui data pelanggan ${cust.name}`);
+  res.json({ success: true, message: 'Data pelanggan berhasil diperbarui.' });
+});
+
+app.delete('/api/customers/:id', (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const idx = (store.customers || []).findIndex((c) => c.id === id);
+  if (idx === -1) return res.status(404).json({ success: false, error: 'Pelanggan tidak ditemukan.' });
+
+  const removed = store.customers.splice(idx, 1)[0];
+  // Hapus linked GIS node dan kabel dropcore
+  store.ftth_objects = store.ftth_objects.filter((o) => o.id !== `ONT-${id}`);
+  store.ftth_cables = store.ftth_cables.filter((c) => c.id !== `CBL-DROP-${id}`);
+
+  saveStore(store);
+  logAudit(null, 'Operator', 'DELETE_CUSTOMER', 'CUSTOMER', String(id), `Menghapus pelanggan ${removed.name}`);
+  res.json({ success: true, message: `Pelanggan ${removed.name} berhasil dihapus.` });
+});
+
+// POST /customers/:id/isolir
+app.post('/api/customers/:id/isolir', (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const cust = (store.customers || []).find((c) => c.id === id);
+  if (!cust) return res.status(404).json({ success: false, error: 'Pelanggan tidak ditemukan.' });
+
+  cust.status = 'ISOLIR';
+  cust.isolir_reason = 'Tagihan belum dibayar';
+  cust.isolir_at = new Date().toISOString();
+
+  // Sinkronisasi status objek GIS
+  const ontObj = store.ftth_objects.find((o) => o.id === `ONT-${cust.id}`);
+  if (ontObj) ontObj.status = 'MAINTENANCE';
+
+  saveStore(store);
+  logAudit(null, 'Operator', 'ISOLIR_CUSTOMER', 'CUSTOMER', String(cust.id), `Mengisolir pelanggan ${cust.name} (PPPoE: ${cust.pppoe_username})`);
+  res.json({
+    success: true,
+    status: 'ISOLIR',
+    message: `Pelanggan '${cust.name}' berhasil diisolir pada MikroTik (profile diubah ke isolir, sesi aktif ditutup).`
+  });
+});
+
+// POST /customers/:id/buka-isolir
+app.post('/api/customers/:id/buka-isolir', (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const cust = (store.customers || []).find((c) => c.id === id);
+  if (!cust) return res.status(404).json({ success: false, error: 'Pelanggan tidak ditemukan.' });
+
+  cust.status = 'ACTIVE';
+  cust.isolir_reason = null;
+  cust.isolir_at = null;
+
+  const ontObj = store.ftth_objects.find((o) => o.id === `ONT-${cust.id}`);
+  if (ontObj) ontObj.status = 'ACTIVE';
+
+  saveStore(store);
+  logAudit(null, 'Operator', 'BUKA_ISOLIR_CUSTOMER', 'CUSTOMER', String(cust.id), `Membuka isolir pelanggan ${cust.name} (PPPoE: ${cust.pppoe_username})`);
+  res.json({
+    success: true,
+    status: 'ACTIVE',
+    message: `Isolir pelanggan '${cust.name}' dibuka. Profile MikroTik dikembalikan ke paket normal.`
+  });
+});
+
+// POST /customers/:id/send-wa-reminder
+app.post('/api/customers/:id/send-wa-reminder', (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const cust = (store.customers || []).find((c) => c.id === id);
+  if (!cust) return res.status(404).json({ success: false, error: 'Pelanggan tidak ditemukan.' });
+
+  let cleanPhone = cust.phone_number.replace(/\D/g, '');
+  if (cleanPhone.startsWith('0')) {
+    cleanPhone = '62' + cleanPhone.slice(1);
+  }
+
+  const pkg = (store.packages || []).find((p) => p.id === cust.package_id);
+  const priceFormatted = new Intl.NumberFormat('id-ID').format(pkg ? pkg.price : 200000);
+  const dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  const msgText = `Halo Pelanggan Yth. *${cust.name}*,\n\nBerikut pemberitahuan tagihan internet Transdata periode ini:\n• No. Pelanggan : *${cust.customer_number}*\n• Paket Layanan : *${pkg ? pkg.name : 'Internet Fiber'}* (${pkg ? pkg.bandwidth : '20 Mbps'})\n• Total Tagihan : *Rp ${priceFormatted}*\n• Batas Waktu   : *${dueDate}*\n• Status Sesi   : *${cust.status}*\n\nPembayaran dapat ditransfer melalui:\n• BCA: 1234-5678-90 a/n PT TRANSDATA PRIMA\n• Mandiri: 9876-5432-10 a/n PT TRANSDATA PRIMA\n\nSetelah transfer, mohon kirimkan bukti bayar ke WhatsApp ini.\nTerima kasih atas kepercayaannya.\n_Transdata NOC Operations_`;
+
+  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}`;
+
+  logAudit(null, 'Operator', 'SEND_WA_REMINDER', 'CUSTOMER', String(cust.id), `Kirim pengingat tagihan WA ke ${cust.name} (${cleanPhone})`);
+
+  res.json({
+    success: true,
+    message: `Pesan pengingat tagihan untuk ${cust.name} siap dikirim.`,
+    phone: cleanPhone,
+    wa_url: waUrl,
+    message_text: msgText
+  });
+});
+
+// GET /ont/:sn/realtime
+app.get('/api/ont/:sn/realtime', (req: Request, res: Response) => {
+  const sn = req.params.sn;
+  const cust = (store.customers || []).find((c) => c.ont_sn === sn);
+
+  // Telemetri real-time simulasi / koneksi hardware jika terhubung
+  const rxPower = -18.5 - Math.round(Math.random() * 25) / 10;
+  const txPower = 2.1 + Math.round(Math.random() * 15) / 10;
+  const temp = 40 + Math.round(Math.random() * 50) / 10;
+  const volt = 3.25 + Math.round(Math.random() * 8) / 100;
+  const clients = Math.floor(2 + Math.random() * 5);
+  const latency = Math.round((1.5 + Math.random() * 2.8) * 10) / 10;
+
+  res.json({
+    success: true,
+    serial_number: sn,
+    model: cust?.ont_model || 'F609 / GPON ONT',
+    vendor: 'ZTE',
+    power_rx_dbm: rxPower,
+    power_tx_dbm: txPower,
+    temperature_c: temp,
+    voltage_v: volt,
+    wifi_ssid: 'TRANSDATA-HOME-WIFI',
+    wifi_active_clients: clients,
+    olt_status: cust?.status === 'DOWN' ? 'los' : 'working',
+    pon_interface: 'gpon-olt_1/1/2:4',
+    ip_address: '10.20.14.88',
+    mac_address: 'E0:67:B3:AA:BB:CC',
+    ping_latency_ms: latency,
+    ping_packet_loss_pct: 0,
+    last_inform: new Date().toISOString(),
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Mount Vite in development

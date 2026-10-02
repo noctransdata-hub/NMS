@@ -124,6 +124,150 @@ class MikrotikService
         ];
     }
 
+    public function getPppoeSecrets(): array
+    {
+        return $this->executeCommand('/ppp/secret/print');
+    }
+
+    public function getPppoeActive(): array
+    {
+        return $this->executeCommand('/ppp/active/print');
+    }
+
+    public function createOrUpdatePppoeSecret(string $username, string $password, string $profile, string $comment = ''): array
+    {
+        $existing = $this->executeCommand('/ppp/secret/print', ['?name' => $username]);
+        if (!empty($existing['data'])) {
+            $id = $existing['data'][0]['.id'];
+            $params = [
+                'numbers'  => $id,
+                'password' => $password,
+                'profile'  => $profile
+            ];
+            if ($comment !== '') {
+                $params['comment'] = $comment;
+            }
+            return $this->executeCommand('/ppp/secret/set', $params);
+        } else {
+            $params = [
+                'name'     => $username,
+                'password' => $password,
+                'service'  => 'pppoe',
+                'profile'  => $profile,
+                'comment'  => $comment
+            ];
+            return $this->executeCommand('/ppp/secret/add', $params);
+        }
+    }
+
+    /**
+     * Isolir Pelanggan:
+     * Mengganti profile pada secret ke profile 'isolir', buat comment 'isolir/<timestamp>',
+     * dan remove active connection di /ppp/active berdasarkan username PPPoE.
+     */
+    public function isolirCustomer(string $username): array
+    {
+        $now = date('Y-m-d H:i:s');
+        $comment = "isolir/$now";
+
+        $existing = $this->executeCommand('/ppp/secret/print', ['?name' => $username]);
+        if (empty($existing['data'])) {
+            return [
+                'success' => false,
+                'error'   => "Akun PPPoE '$username' tidak ditemukan di MikroTik."
+            ];
+        }
+
+        $secretId = $existing['data'][0]['.id'];
+        $setRes = $this->executeCommand('/ppp/secret/set', [
+            'numbers' => $secretId,
+            'profile' => 'isolir',
+            'comment' => $comment
+        ]);
+
+        if (isset($setRes['success']) && !$setRes['success']) {
+            return $setRes;
+        }
+
+        $activeList = $this->executeCommand('/ppp/active/print', ['?name' => $username]);
+        $kicked = 0;
+        if (!empty($activeList['data'])) {
+            foreach ($activeList['data'] as $session) {
+                if (isset($session['.id'])) {
+                    $this->executeCommand('/ppp/active/remove', ['numbers' => $session['.id']]);
+                    $kicked++;
+                }
+            }
+        }
+
+        return [
+            'success'     => true,
+            'message'     => "Pelanggan '$username' berhasil diisolir (profile: isolir, $kicked sesi aktif diputus).",
+            'isolir_time' => $now
+        ];
+    }
+
+    /**
+     * Buka Isolir Pelanggan:
+     * Mengembalikan profile ke profile layanan semula dan membersihkan comment isolir.
+     */
+    public function bukaIsolirCustomer(string $username, string $normalProfile): array
+    {
+        $now = date('Y-m-d H:i:s');
+        $comment = "active/buka-isolir-$now";
+
+        $existing = $this->executeCommand('/ppp/secret/print', ['?name' => $username]);
+        if (empty($existing['data'])) {
+            return [
+                'success' => false,
+                'error'   => "Akun PPPoE '$username' tidak ditemukan di MikroTik."
+            ];
+        }
+
+        $secretId = $existing['data'][0]['.id'];
+        $setRes = $this->executeCommand('/ppp/secret/set', [
+            'numbers' => $secretId,
+            'profile' => $normalProfile,
+            'comment' => $comment
+        ]);
+
+        if (isset($setRes['success']) && !$setRes['success']) {
+            return $setRes;
+        }
+
+        $activeList = $this->executeCommand('/ppp/active/print', ['?name' => $username]);
+        if (!empty($activeList['data'])) {
+            foreach ($activeList['data'] as $session) {
+                if (isset($session['.id'])) {
+                    $this->executeCommand('/ppp/active/remove', ['numbers' => $session['.id']]);
+                }
+            }
+        }
+
+        return [
+            'success' => true,
+            'message' => "Isolir pelanggan '$username' dibuka. Profil dikembalikan ke '$normalProfile'."
+        ];
+    }
+
+    public function deletePppoeSecret(string $username): array
+    {
+        $existing = $this->executeCommand('/ppp/secret/print', ['?name' => $username]);
+        if (!empty($existing['data'])) {
+            $secretId = $existing['data'][0]['.id'];
+            $this->executeCommand('/ppp/secret/remove', ['numbers' => $secretId]);
+        }
+        $activeList = $this->executeCommand('/ppp/active/print', ['?name' => $username]);
+        if (!empty($activeList['data'])) {
+            foreach ($activeList['data'] as $session) {
+                if (isset($session['.id'])) {
+                    $this->executeCommand('/ppp/active/remove', ['numbers' => $session['.id']]);
+                }
+            }
+        }
+        return ['success' => true];
+    }
+
     private function writeWord($fp, string $word): void
     {
         $len = strlen($word);

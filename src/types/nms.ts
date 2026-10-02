@@ -131,3 +131,69 @@ export interface DashboardSummary {
   recent_alarms: Alarm[];
   timestamp: string;
 }
+
+export type CustomerStatus = 'ACTIVE' | 'ISOLIR' | 'DOWN';
+
+export interface Package {
+  id: number;
+  name: string;
+  price: number;
+  bandwidth: string;
+  description?: string;
+  mikrotik_profile?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Customer {
+  id: number;
+  customer_number: string;
+  name: string;
+  nik: string;
+  address: string;
+  latitude: number | null;
+  longitude: number | null;
+  phone_number: string;
+  email: string | null;
+  package_id: number;
+  package_name?: string;
+  package_price?: number;
+  bandwidth?: string;
+  odp_id: string | null;
+  odp_name?: string;
+  odp_code?: string;
+  ont_sn: string | null;
+  ont_model: string | null;
+  pppoe_username: string | null;
+  pppoe_password?: string | null;
+  status: CustomerStatus;
+  isolir_reason?: string | null;
+  isolir_at?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at?: string;
+  live_pppoe_active?: boolean;
+  live_ip?: string;
+  live_uptime?: string;
+  live_ont_status?: string;
+}
+
+export interface OntRealtimeData {
+  serial_number: string;
+  model: string;
+  vendor: string;
+  power_rx_dbm: string | number;
+  power_tx_dbm: string | number;
+  temperature_c: string | number;
+  voltage_v: string | number;
+  wifi_ssid: string;
+  wifi_active_clients: number;
+  olt_status: 'working' | 'los' | 'dying_gasp' | 'offline';
+  pon_interface: string;
+  ip_address: string;
+  mac_address: string;
+  ping_latency_ms: number | null;
+  ping_packet_loss_pct: number;
+  last_inform: string;
+  timestamp: string;
+}

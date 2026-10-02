@@ -16,6 +16,7 @@ import { DeviceDetailPage } from './pages/DeviceDetailPage';
 import { MikrotikPage } from './pages/MikrotikPage';
 import { GenieAcsPage } from './pages/GenieAcsPage';
 import { GisFtthPage } from './pages/GisFtthPage';
+import { CustomersPage } from './pages/CustomersPage';
 import { AlarmsPage } from './pages/AlarmsPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -163,6 +164,15 @@ export default function App() {
                   onOpenAddDevice={() => {
                     setCurrentTab('devices');
                     setIsAddDeviceOpen(true);
+                  }}
+                />
+              )}
+
+              {currentTab === 'customers' && (
+                <CustomersPage
+                  onNavigateToMap={(targetId, lat, lng) => {
+                    setSelectedDeviceId(null);
+                    setCurrentTab('gis');
                   }}
                 />
               )}

@@ -9,11 +9,13 @@ import {
   Bell,
   ShieldCheck,
   Settings,
+  Users,
   X
 } from 'lucide-react';
 
 export type NavItem =
   | 'dashboard'
+  | 'customers'
   | 'devices'
   | 'mikrotik'
   | 'genieacs'
@@ -39,6 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const menuItems = [
     { id: 'dashboard' as NavItem, label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'customers' as NavItem, label: 'Data Pelanggan', icon: Users },
     { id: 'devices' as NavItem, label: 'Perangkat (Devices)', icon: Server },
     { id: 'mikrotik' as NavItem, label: 'MikroTik RouterOS', icon: Router },
     { id: 'genieacs' as NavItem, label: 'GenieACS (ONT/CPE)', icon: Radio },

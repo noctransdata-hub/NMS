@@ -164,5 +164,57 @@ export const api = {
     request<{ success: boolean; settings: Record<string, string> }>('/settings', {
       method: 'POST',
       body: JSON.stringify(settings)
-    })
+    }),
+
+  // Service Packages (Setting Paket Layanan)
+  getPackages: () => request<{ success: boolean; packages: Package[] }>('/packages'),
+  createPackage: (payload: Partial<Package>) =>
+    request<{ success: boolean; id: number; message: string }>('/packages', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  updatePackage: (id: number, payload: Partial<Package>) =>
+    request<{ success: boolean; message: string }>(`/packages/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    }),
+  deletePackage: (id: number) =>
+    request<{ success: boolean; message: string }>(`/packages/${id}`, {
+      method: 'DELETE'
+    }),
+
+  // Customers (Data Pelanggan)
+  getCustomers: (search = '') =>
+    request<{ success: boolean; count: number; customers: Customer[] }>(`/customers?search=${encodeURIComponent(search)}`),
+  createCustomer: (payload: Partial<Customer>) =>
+    request<{ success: boolean; id: number; customer_number: string; message: string }>('/customers', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  updateCustomer: (id: number, payload: Partial<Customer>) =>
+    request<{ success: boolean; message: string }>(`/customers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    }),
+  deleteCustomer: (id: number) =>
+    request<{ success: boolean; message: string }>(`/customers/${id}`, {
+      method: 'DELETE'
+    }),
+  isolirCustomer: (id: number) =>
+    request<{ success: boolean; message: string; status: string }>(`/customers/${id}/isolir`, {
+      method: 'POST'
+    }),
+  bukaIsolirCustomer: (id: number) =>
+    request<{ success: boolean; message: string; status: string }>(`/customers/${id}/buka-isolir`, {
+      method: 'POST'
+    }),
+  sendWaReminder: (id: number) =>
+    request<{ success: boolean; message: string; phone: string; wa_url: string; message_text: string }>(
+      `/customers/${id}/send-wa-reminder`,
+      { method: 'POST' }
+    ),
+
+  // ONT Realtime Telemetry (GenieACS + SNMP OLT-C320 + Ping)
+  getOntRealtime: (sn: string) =>
+    request<OntRealtimeData & { success: boolean }>(`/ont/${encodeURIComponent(sn)}/realtime`)
 };
