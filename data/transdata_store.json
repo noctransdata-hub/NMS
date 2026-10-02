@@ -6,8 +6,68 @@
   "ftth_objects": [],
   "ftth_cables": [],
   "ftth_customers": [],
+  "packages": [
+    {
+      "id": 1,
+      "name": "HOME 20 Mbps",
+      "price": 175000,
+      "bandwidth": "20 Mbps / 20 Mbps",
+      "description": "Paket internet fiber optik rumahan up to 20 Mbps",
+      "mikrotik_profile": "HOME-20M",
+      "created_at": "2026-10-02T05:14:20.852Z"
+    },
+    {
+      "id": 2,
+      "name": "HOME 30 Mbps",
+      "price": 235000,
+      "bandwidth": "30 Mbps / 30 Mbps",
+      "description": "Paket internet fiber optik keluarga up to 30 Mbps",
+      "mikrotik_profile": "HOME-30M",
+      "created_at": "2026-10-02T05:14:20.853Z"
+    },
+    {
+      "id": 3,
+      "name": "HOME 50 Mbps",
+      "price": 325000,
+      "bandwidth": "50 Mbps / 50 Mbps",
+      "description": "Paket internet streaming & gaming up to 50 Mbps",
+      "mikrotik_profile": "HOME-50M",
+      "created_at": "2026-10-02T05:14:20.853Z"
+    },
+    {
+      "id": 4,
+      "name": "SOHO 100 Mbps",
+      "price": 550000,
+      "bandwidth": "100 Mbps / 100 Mbps",
+      "description": "Paket internet prioritas kantor & UMKM up to 100 Mbps",
+      "mikrotik_profile": "SOHO-100M",
+      "created_at": "2026-10-02T05:14:20.853Z"
+    },
+    {
+      "id": 5,
+      "name": "TEST 10M",
+      "price": 150000,
+      "bandwidth": "10 Mbps",
+      "description": "Test package",
+      "mikrotik_profile": "profile-10m",
+      "created_at": "2026-10-02T05:53:31.744Z"
+    }
+  ],
+  "customers": [],
   "alarms": [],
-  "audit_logs": [],
+  "audit_logs": [
+    {
+      "id": 1790920411744,
+      "user_id": null,
+      "username": "Operator",
+      "action": "CREATE_PACKAGE",
+      "target_type": "PACKAGE",
+      "target_id": "5",
+      "details": "Membuat paket TEST 10M Rp 150000",
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-10-02T05:53:31.744Z"
+    }
+  ],
   "settings": {
     "isp_name": "ISP Transdata",
     "snmp_default_community": "public",

@@ -225,14 +225,182 @@ const defaultPackages: Package[] = [
   { id: 4, name: 'SOHO 100 Mbps', price: 550000, bandwidth: '100 Mbps / 100 Mbps', description: 'Paket internet prioritas kantor & UMKM up to 100 Mbps', mikrotik_profile: 'SOHO-100M', created_at: new Date().toISOString() }
 ];
 
-// Initial clean state with NO dummy or fake data
+const defaultFtthObjects: FtthObject[] = [
+  {
+    id: 'OLT-01',
+    object_type: 'OLT',
+    code: 'OLT-ZTE-01',
+    name: 'OLT ZTE C320 Central POP',
+    latitude: -6.2088,
+    longitude: 106.8456,
+    status: 'ACTIVE',
+    address: 'Gedung NOC Transdata Lt. 2, Manggarai, Jakarta Selatan',
+    port_capacity: 16,
+    ports_used: 4,
+    parent_object_id: null,
+    notes: 'OLT GPON Utama - IP: 10.10.10.2 / SNMP community: public',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'ODC-01',
+    object_type: 'ODC',
+    code: 'ODC-01-MGR',
+    name: 'ODC 01 Manggarai Central (144 Port)',
+    latitude: -6.2096,
+    longitude: 106.8475,
+    status: 'ACTIVE',
+    address: 'Jl. Manggarai Utara No. 12, Jakarta Selatan',
+    port_capacity: 144,
+    ports_used: 32,
+    parent_object_id: 'OLT-01',
+    notes: 'Distribusi Feeder dari OLT Port 1 & 2',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'T-01',
+    object_type: 'TIANG',
+    code: 'TIANG-01',
+    name: 'Tiang Distribusi T-01 7m',
+    latitude: -6.2104,
+    longitude: 106.8483,
+    status: 'ACTIVE',
+    address: 'Perempatan Sawo Manggarai',
+    port_capacity: 0,
+    ports_used: 0,
+    parent_object_id: 'ODC-01',
+    notes: 'Tiang besi 7 meter PLN joint pole',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'ODP-01',
+    object_type: 'ODP',
+    code: 'ODP-MGR-01',
+    name: 'ODP 01 Cluster Anggrek (16 Port)',
+    latitude: -6.2112,
+    longitude: 106.8491,
+    status: 'ACTIVE',
+    address: 'Jl. Sawo Blok A1 No. 5',
+    port_capacity: 16,
+    ports_used: 4,
+    parent_object_id: 'ODC-01',
+    notes: 'Splitter 1:16 PLC Modular',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'T-02',
+    object_type: 'TIANG',
+    code: 'TIANG-02',
+    name: 'Tiang Distribusi T-02 7m',
+    latitude: -6.2085,
+    longitude: 106.8488,
+    status: 'ACTIVE',
+    address: 'Jl. Melati Raya Depan Lapangan',
+    port_capacity: 0,
+    ports_used: 0,
+    parent_object_id: 'ODC-01',
+    notes: 'Tiang besi 7 meter',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'ODP-02',
+    object_type: 'ODP',
+    code: 'ODP-MGR-02',
+    name: 'ODP 02 Cluster Melati (16 Port)',
+    latitude: -6.2078,
+    longitude: 106.8502,
+    status: 'ACTIVE',
+    address: 'Jl. Melati 3 Blok C2 No. 8',
+    port_capacity: 16,
+    ports_used: 2,
+    parent_object_id: 'ODC-01',
+    notes: 'Splitter 1:16 PLC Modular',
+    created_at: new Date().toISOString()
+  }
+];
+
+const defaultFtthCables: FtthCable[] = [
+  {
+    id: 'CBL-FDR-01',
+    cable_code: 'FDR-MGR-01',
+    cable_name: 'Feeder Cable OLT to ODC-01',
+    cable_type: 'FEEDER',
+    core_count: 24,
+    color_hex: '#a855f7',
+    start_object_id: 'OLT-01',
+    end_object_id: 'ODC-01',
+    calculated_length_m: 235,
+    status: 'ACTIVE',
+    technician_notes: 'Kabel udara ADSS 24 core Single Mode',
+    vertices: [
+      { vertex_order: 1, latitude: -6.2088, longitude: 106.8456 },
+      { vertex_order: 2, latitude: -6.2091, longitude: 106.8465 },
+      { vertex_order: 3, latitude: -6.2096, longitude: 106.8475 }
+    ],
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'CBL-DST-01',
+    cable_code: 'DST-MGR-01',
+    cable_name: 'Distribusi ODC-01 to ODP-01',
+    cable_type: 'DISTRIBUTION',
+    core_count: 12,
+    color_hex: '#3b82f6',
+    start_object_id: 'ODC-01',
+    end_object_id: 'ODP-01',
+    calculated_length_m: 215,
+    status: 'ACTIVE',
+    technician_notes: 'Kabel udara figure-8 12 core via Tiang-01',
+    vertices: [
+      { vertex_order: 1, latitude: -6.2096, longitude: 106.8475 },
+      { vertex_order: 2, latitude: -6.2104, longitude: 106.8483 },
+      { vertex_order: 3, latitude: -6.2112, longitude: 106.8491 }
+    ],
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'CBL-DST-02',
+    cable_code: 'DST-MGR-02',
+    cable_name: 'Distribusi ODC-01 to ODP-02',
+    cable_type: 'DISTRIBUTION',
+    core_count: 12,
+    color_hex: '#3b82f6',
+    start_object_id: 'ODC-01',
+    end_object_id: 'ODP-02',
+    calculated_length_m: 340,
+    status: 'ACTIVE',
+    technician_notes: 'Kabel udara figure-8 12 core via Tiang-02',
+    vertices: [
+      { vertex_order: 1, latitude: -6.2096, longitude: 106.8475 },
+      { vertex_order: 2, latitude: -6.2085, longitude: 106.8488 },
+      { vertex_order: 3, latitude: -6.2078, longitude: 106.8502 }
+    ],
+    created_at: new Date().toISOString()
+  }
+];
+
+function parseIndonesianCurrency(val: any): number {
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (!val) return 0;
+  let str = String(val).trim().replace(/^Rp\.?\s*/i, '');
+  if (/^\d{1,3}(\.\d{3})+$/.test(str)) {
+    str = str.replace(/\./g, '');
+  } else if (/^\d{1,3}(,\d{3})+$/.test(str)) {
+    str = str.replace(/,/g, '');
+  } else {
+    str = str.replace(/[^0-9.]/g, '');
+  }
+  const n = parseFloat(str);
+  return isNaN(n) ? 0 : n;
+}
+
+// Initial clean state with default network structures
 const defaultState: StoreData = {
   users: [],
   devices: [],
   device_interfaces: {},
   traffic_samples: [],
-  ftth_objects: [],
-  ftth_cables: [],
+  ftth_objects: defaultFtthObjects,
+  ftth_cables: defaultFtthCables,
   ftth_customers: [],
   packages: defaultPackages,
   customers: [],
@@ -892,6 +1060,10 @@ app.get('/api/genieacs/devices', async (req: Request, res: Response) => {
 
 // 6. GIS FTTH Endpoints
 app.get('/api/gis/objects', (req: Request, res: Response) => {
+  if (!store.ftth_objects || store.ftth_objects.length === 0) {
+    store.ftth_objects = [...defaultFtthObjects];
+    saveStore(store);
+  }
   res.json({ success: true, count: store.ftth_objects.length, objects: store.ftth_objects });
 });
 
