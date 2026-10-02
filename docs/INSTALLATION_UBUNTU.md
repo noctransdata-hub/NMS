@@ -171,33 +171,67 @@ sudo nginx -t && sudo systemctl restart nginx php8.3-fpm
 
 ---
 
-## 10. Solusi: Login Berhasil Tapi Terlempar Kembali ke Halaman Login
+## 11. Panduan Konfigurasi Data Pelanggan, Paket Layanan & MikroTik Isolir
 
-Jika login berhasil (username dan password benar) namun browser langsung mengembalikan Anda ke halaman login:
+Transdata NMS dilengkapi modul manajemen pelanggan ISP dan paket layanan billing yang terhubung langsung ke MikroTik RouterOS API:
 
-### Penyebab Teknis:
-1. **Nginx Header Authorization Stripping**: Secara default, Nginx tidak meneruskan HTTP Header `Authorization` (yang memuat token JWT) ke PHP-FPM jika directive `fastcgi_param HTTP_AUTHORIZATION $http_authorization;` belum ditambahkan di file konfigurasi Nginx. Akibatnya, request validasi `/api/auth/me` mengembalikan status `401 Unauthorized` sehingga frontend membersihkan token dan kembali ke portal login.
-2. **Duplikasi Validasi Session**: Pada kode frontend sebelumnya, pemanggilan `checkStatus()` sesaat setelah login memicu validasi ulang yang terputus jika header terpotong.
+### 1. Setting Paket Layanan:
+- **Nama Paket**: Ditentukan dalam bentuk teks & angka (contoh: `HOME 20 Mbps`, `BISNIS 50 Mbps`).
+- **Tagihan (Rp)**: Besaran tarif bulanan dalam format angka nominal murni (contoh: `250000`).
+- **Kapasitas Bandwidth**: Alokasi bandwidth (contoh: `20 Mbps Simetris`).
+- **Profile MikroTik**: Nama profil PPP secret di router MikroTik yang memiliki limitasi *rate-limit* rx/tx.
 
-### Solusi:
-1. Pastikan baris `fastcgi_param HTTP_AUTHORIZATION $http_authorization;` telah ada di blok `/api` Nginx Anda:
-   ```nginx
-   location ^~ /api {
-       fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
-       fastcgi_index index.php;
-       fastcgi_param SCRIPT_FILENAME /var/www/transdata-nms/backend/public/index.php;
-       fastcgi_param HTTP_AUTHORIZATION $http_authorization;
-       include fastcgi_params;
-       fastcgi_read_timeout 60s;
-   }
-   ```
-2. Salin pembaruan backend dan build frontend:
-   ```bash
-   sudo cp backend/nginx-transdata.conf /etc/nginx/sites-available/transdata-nms
-   sudo cp backend/public/index.php /var/www/transdata-nms/backend/public/index.php
-   sudo cp backend/src/Auth.php /var/www/transdata-nms/backend/src/Auth.php
-   sudo cp -r dist/* /var/www/transdata-nms/dist/
-   sudo nginx -t && sudo systemctl restart nginx php8.3-fpm
-   ```
+### 2. Registrasi Pelanggan Baru:
+- **Nama Pelanggan** (Wajib): Nama lengkap pelanggan.
+- **Nomor KTP / NIK** (Wajib): 16 digit NIK KTP format angka.
+- **Alamat Pelanggan** (Wajib): Teks alamat fisik atau koordinat titik Google Maps.
+- **Nomor WhatsApp/HP** (Wajib): Format nomor numerik aktif (contoh: `08123456789`).
+- **Email Pelanggan** (Opsional): Alamat email pelanggan.
+- **Layanan / Paket** (Wajib): Dropdown otomatis dari database *Setting Paket Layanan*.
+- **Distribusi ODP** (Dropdown GIS): Terhubung langsung ke titik ODP / FAT dari Map FTTH GIS.
+- **Serial Number (SN) ONT**: Format teks & angka (contoh: `ZTEGC88A1234`).
+- **Model ONT**: Tipe perangkat CPE (contoh: `ZTE F609`, `Huawei HG8245H`).
+- **PPPoE Username & Password**: Kredensial akun untuk autentikasi di MikroTik.
+
+### 3. Aksi Operasional Pelanggan:
+- **Isolir (MikroTik API)**:
+  1. Mengubah *profile* pada `/ppp/secret` menjadi `profile=isolir`.
+  2. Menambahkan catatan/komentar pada akun secret dengan format `comment="isolir/YYYY-MM-DD HH:MM:SS"`.
+  3. Memutuskan koneksi aktif pada `/ppp/active` berdasarkan username PPPoE pelanggan secara instan.
+- **Buka Isolir (MikroTik API)**:
+  1. Mengembalikan *profile* secret ke paket layanan normal semula.
+  2. Menghapus komentar isolir dari MikroTik.
+- **Kirim Pengingat Tagihan (WhatsApp API)**:
+  - Membuat format pesan tagihan resmi siap kirim beserta rincian nama, nomor pelanggan, paket, total tagihan, dan nomor rekening pembayaran via link `https://wa.me/`.
+- **Tampilkan Lokasi di Google Maps**:
+  - Melakukan navigasi otomatis (*pan & zoom*) ke titik koordinat rumah pelanggan dan menyorot tarikan kabel dropcore ke ODP terdekat.
+
+---
+
+## 12. Panduan Operasional Map FTTH GIS & Telemetri Realtime ONT
+
+Modul GIS FTTH menyediakan visualisasi penempatan tiang ODP, ODC, OLT, dan tarikan kabel dropcore ke rumah pelanggan:
+
+### 1. Lapisan Peta Google Maps Platform:
+- Pilihan layer satelit beresolusi tinggi: **Google Satelit (Hybrid)**, **Google Roadmap (Jalan)**, dan **Google Kontur (Terrain)**.
+- Dukungan `@vis.gl/react-google-maps` dengan penanda *Advanced Marker* dan garis vektor *Polyline* multi-segmen.
+
+### 2. Telemetri Realtime ONT (11 Parameter Aktual):
+1. **Power TX & RX (dBm)**: Dibaca langsung dari GenieACS TR-069 via NBI REST API.
+2. **Model & Vendor**: Informasi pabrikan dan model ONT dari GenieACS.
+3. **Suhu Operasional (°C)**: Monitoring suhu internal ONT (batas normal < 65°C).
+4. **Tegangan Suplai (Volt)**: Stabilitas voltase DC modul optik ONT (normal ~3.3V).
+5. **WiFi SSID**: Nama SSID nirkabel aktif di rumah pelanggan.
+6. **Klien Aktif**: Jumlah perangkat gadget (laptop/HP) yang sedang terkoneksi ke WiFi ONT.
+7. **Status Aktif OLT (Working / LOS / Dying Gasp)**: Di-query melalui SNMP OID pada OLT ZTE C320 (`zxAnPonOnuStatus`).
+8. **Interface PON**: Port interface PON pada OLT ZTE C320 (contoh: `gpon-olt_1/1/2:4`).
+9. **IP Address**: Alamat IP aktual ONT dari GenieACS.
+10. **Latency ICMP Ping**: Laju latensi paket ICMP dari server ke IP ONT beserta persentase *packet loss*.
+11. **MAC Address**: Alamat fisik antarmuka ONT.
+
+### 3. Kontrol Operasional Peta:
+- **Tombol Undo & Redo**: Membatalkan atau mengaplikasikan ulang perubahan posisi tiang, penambahan node, atau rute kabel (Shortcut: `Ctrl+Z` dan `Ctrl+Y`).
+- **Tombol Delete**: Menghapus objek node ODP/ODC/OLT atau rute kabel dari database secara aman.
+- **Tombol Search**: Mencari kode atau nama ODP, ODC, OLT, atau pelanggan dengan animasi *fly-to* langsung ke lokasi.
 
 

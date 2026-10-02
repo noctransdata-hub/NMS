@@ -17,6 +17,7 @@ import {
   Package as PackageIcon,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
   RefreshCw,
   Copy,
   Eye,
@@ -93,11 +94,19 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
 
   // Action status loading
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
-  const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; isError?: boolean } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string;
+    description: string;
+    actionText: string;
+    variant: 'danger' | 'warning' | 'primary';
+    onConfirm: () => Promise<void>;
+  } | null>(null);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
 
-  const showToast = (msg: string) => {
-    setSuccessToast(msg);
-    setTimeout(() => setSuccessToast(null), 4000);
+  const showToast = (msg: string, isError: boolean = false) => {
+    setToast({ message: msg, isError });
+    setTimeout(() => setToast(null), 4000);
   };
 
   const fetchData = async () => {
@@ -220,7 +229,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
   const handleCustomerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.nik || !formData.address || !formData.phone_number || !formData.package_id) {
-      alert('Nama, NIK, Alamat, No WhatsApp, dan Paket Layanan wajib diisi.');
+      showToast('Nama, NIK, Alamat, No WhatsApp, dan Paket Layanan wajib diisi.', true);
       return;
     }
 
@@ -253,56 +262,74 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
       setIsAddCustomerOpen(false);
       fetchData();
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan data pelanggan');
+      showToast(err.message || 'Gagal menyimpan data pelanggan', true);
     }
   };
 
   // Delete Customer
-  const handleDeleteCustomer = async (cust: Customer) => {
-    if (!window.confirm(`Yakin ingin menghapus pelanggan "${cust.name}" (${cust.customer_number})?\nSemua histori dan node ONT terkait akan dihapus.`)) {
-      return;
-    }
-    try {
-      await api.deleteCustomer(cust.id);
-      showToast(`Pelanggan '${cust.name}' berhasil dihapus.`);
-      fetchData();
-    } catch (err: any) {
-      alert(err.message || 'Gagal menghapus pelanggan');
-    }
+  const handleDeleteCustomer = (cust: Customer) => {
+    setConfirmModal({
+      title: `Hapus Pelanggan: ${cust.name}`,
+      description: `Apakah Anda yakin ingin menghapus pelanggan "${cust.name}" (${cust.customer_number})? Semua histori dan node ONT terkait akan dihapus dari database.`,
+      actionText: 'Hapus Pelanggan',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.deleteCustomer(cust.id);
+          showToast(`Pelanggan '${cust.name}' berhasil dihapus.`);
+          setConfirmModal(null);
+          fetchData();
+        } catch (err: any) {
+          showToast(err.message || 'Gagal menghapus pelanggan', true);
+        }
+      }
+    });
   };
 
   // Action: Isolir Customer via Mikrotik API
-  const handleIsolir = async (cust: Customer) => {
-    if (!window.confirm(`Konfirmasi ISOLIR pelanggan "${cust.name}"?\nProfile di MikroTik akan diubah menjadi 'isolir' dan koneksi aktif akan diputus.`)) {
-      return;
-    }
-    try {
-      setActionLoadingId(cust.id);
-      const res = await api.isolirCustomer(cust.id);
-      showToast(res.message);
-      fetchData();
-    } catch (err: any) {
-      alert(err.message || 'Gagal mengisolir pelanggan');
-    } finally {
-      setActionLoadingId(null);
-    }
+  const handleIsolir = (cust: Customer) => {
+    setConfirmModal({
+      title: `Konfirmasi ISOLIR: ${cust.name}`,
+      description: `Profile pelanggan di MikroTik akan diubah menjadi 'isolir' dan koneksi PPPoE aktif akan diputus secara instan.`,
+      actionText: 'Isolir Pelanggan',
+      variant: 'warning',
+      onConfirm: async () => {
+        try {
+          setActionLoadingId(cust.id);
+          const res = await api.isolirCustomer(cust.id);
+          showToast(res.message);
+          setConfirmModal(null);
+          fetchData();
+        } catch (err: any) {
+          showToast(err.message || 'Gagal mengisolir pelanggan', true);
+        } finally {
+          setActionLoadingId(null);
+        }
+      }
+    });
   };
 
   // Action: Buka Isolir Customer via Mikrotik API
-  const handleBukaIsolir = async (cust: Customer) => {
-    if (!window.confirm(`Konfirmasi BUKA ISOLIR pelanggan "${cust.name}"?\nProfile di MikroTik akan dikembalikan ke paket normal.`)) {
-      return;
-    }
-    try {
-      setActionLoadingId(cust.id);
-      const res = await api.bukaIsolirCustomer(cust.id);
-      showToast(res.message);
-      fetchData();
-    } catch (err: any) {
-      alert(err.message || 'Gagal membuka isolir pelanggan');
-    } finally {
-      setActionLoadingId(null);
-    }
+  const handleBukaIsolir = (cust: Customer) => {
+    setConfirmModal({
+      title: `Konfirmasi BUKA ISOLIR: ${cust.name}`,
+      description: `Profile PPPoE di MikroTik akan dikembalikan ke paket layanan normal (${cust.package_name || 'normal'}).`,
+      actionText: 'Buka Isolir',
+      variant: 'primary',
+      onConfirm: async () => {
+        try {
+          setActionLoadingId(cust.id);
+          const res = await api.bukaIsolirCustomer(cust.id);
+          showToast(res.message);
+          setConfirmModal(null);
+          fetchData();
+        } catch (err: any) {
+          showToast(err.message || 'Gagal membuka isolir pelanggan', true);
+        } finally {
+          setActionLoadingId(null);
+        }
+      }
+    });
   };
 
   // Action: WhatsApp Reminder
@@ -317,7 +344,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
       });
       setIsWaModalOpen(true);
     } catch (err: any) {
-      alert(err.message || 'Gagal membuat pesan WhatsApp');
+      showToast(err.message || 'Gagal membuat pesan WhatsApp', true);
     }
   };
 
@@ -325,7 +352,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
   const handleSavePackage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!packageForm.name || !packageForm.price || !packageForm.bandwidth) {
-      alert('Nama paket, tarif tagihan, dan kapasitas bandwidth wajib diisi.');
+      showToast('Nama paket, tarif tagihan, dan kapasitas bandwidth wajib diisi.', true);
       return;
     }
     try {
@@ -351,23 +378,31 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
       setPackages(pkgRes.packages || []);
       fetchData();
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan paket');
+      showToast(err.message || 'Gagal menyimpan paket', true);
     } finally {
       setPackageFormLoading(false);
     }
   };
 
-  const handleDeletePackage = async (pkg: Package) => {
-    if (!window.confirm(`Yakin ingin menghapus paket "${pkg.name}"?`)) return;
-    try {
-      await api.deletePackage(pkg.id);
-      showToast(`Paket '${pkg.name}' berhasil dihapus.`);
-      const pkgRes = await api.getPackages();
-      setPackages(pkgRes.packages || []);
-      fetchData();
-    } catch (err: any) {
-      alert(err.message || 'Gagal menghapus paket');
-    }
+  const handleDeletePackage = (pkg: Package) => {
+    setConfirmModal({
+      title: `Hapus Paket: ${pkg.name}`,
+      description: `Apakah Anda yakin ingin menghapus paket layanan "${pkg.name}" dari database?`,
+      actionText: 'Hapus Paket',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.deletePackage(pkg.id);
+          showToast(`Paket '${pkg.name}' berhasil dihapus.`);
+          setConfirmModal(null);
+          const pkgRes = await api.getPackages();
+          setPackages(pkgRes.packages || []);
+          fetchData();
+        } catch (err: any) {
+          showToast(err.message || 'Gagal menghapus paket', true);
+        }
+      }
+    });
   };
 
   // Formatting Rupiah
@@ -384,10 +419,20 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
   return (
     <div className="flex-1 overflow-y-auto bg-slate-950 p-4 sm:p-6 text-slate-100">
       {/* Toast Notification */}
-      {successToast && (
-        <div className="fixed top-20 right-6 z-50 flex items-center gap-3 bg-emerald-950/90 border border-emerald-500/50 text-emerald-200 px-4 py-3 rounded-xl shadow-2xl shadow-emerald-950 backdrop-blur-md text-sm animate-in fade-in slide-in-from-top-2">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-          <span>{successToast}</span>
+      {toast && (
+        <div
+          className={`fixed top-20 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md text-sm animate-in fade-in slide-in-from-top-2 border ${
+            toast.isError
+              ? 'bg-rose-950/90 border-rose-500/50 text-rose-200 shadow-rose-950'
+              : 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200 shadow-emerald-950'
+          }`}
+        >
+          {toast.isError ? (
+            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          )}
+          <span>{toast.message}</span>
         </div>
       )}
 
@@ -781,7 +826,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
         isOpen={isAddCustomerOpen}
         onClose={() => setIsAddCustomerOpen(false)}
         title={editingCustomer ? 'Edit Data Pelanggan' : 'Registrasi Pelanggan Baru'}
-        maxWidth="max-w-2xl"
+        maxWidth="2xl"
       >
         <form onSubmit={handleCustomerSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1006,7 +1051,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
         isOpen={isPackagesModalOpen}
         onClose={() => setIsPackagesModalOpen(false)}
         title="Setting Paket Layanan Internet"
-        maxWidth="max-w-2xl"
+        maxWidth="2xl"
       >
         <div className="space-y-6">
           {/* Form Create / Edit Package */}
@@ -1164,7 +1209,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
         isOpen={isWaModalOpen}
         onClose={() => setIsWaModalOpen(false)}
         title="Kirim Pengingat Tagihan via WhatsApp"
-        maxWidth="max-w-lg"
+        maxWidth="lg"
       >
         {selectedCustomerForWa && waMessageData && (
           <div className="space-y-4">
@@ -1219,6 +1264,51 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ onNavigateToMap })
           </div>
         )}
       </Modal>
+
+      {/* Action Confirmation Modal */}
+      {confirmModal && (
+        <Modal
+          isOpen={true}
+          onClose={() => setConfirmModal(null)}
+          title={confirmModal.title}
+        >
+          <div className="space-y-4">
+            <p className="text-xs sm:text-sm text-slate-300">
+              {confirmModal.description}
+            </p>
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white bg-slate-800 rounded-xl cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={confirmSubmitting}
+                onClick={async () => {
+                  setConfirmSubmitting(true);
+                  try {
+                    await confirmModal.onConfirm();
+                  } finally {
+                    setConfirmSubmitting(false);
+                  }
+                }}
+                className={`px-4 py-2 text-xs font-semibold text-white rounded-xl shadow-lg transition cursor-pointer disabled:opacity-50 ${
+                  confirmModal.variant === 'danger'
+                    ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-900/30'
+                    : confirmModal.variant === 'warning'
+                    ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/30'
+                    : 'bg-cyan-600 hover:bg-cyan-500 shadow-cyan-900/30'
+                }`}
+              >
+                {confirmSubmitting ? 'Memproses...' : confirmModal.actionText}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

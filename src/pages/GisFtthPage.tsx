@@ -148,7 +148,12 @@ function createCustomMarkerIcon(type: FtthObjectType, status: string): L.DivIcon
   });
 }
 
-export const GisFtthPage: React.FC = () => {
+interface GisFtthPageProps {
+  targetFocus?: { id?: string; lat?: number; lng?: number } | null;
+  onClearTarget?: () => void;
+}
+
+export const GisFtthPage: React.FC<GisFtthPageProps> = ({ targetFocus, onClearTarget }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const currentTileLayerRef = useRef<L.TileLayer | null>(null);
@@ -172,8 +177,9 @@ export const GisFtthPage: React.FC = () => {
   const [drawnVertices, setDrawnVertices] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const [isCableModalOpen, setIsCableModalOpen] = useState(false);
 
-  // Selected Object / Detail Inspector
+  // Selected Object or Cable / Detail Inspector
   const [selectedObject, setSelectedObject] = useState<FtthObject | null>(null);
+  const [selectedCable, setSelectedCable] = useState<FtthCable | null>(null);
   const [traceResult, setTraceResult] = useState<TopologyTraceResult | null>(null);
   const [tracing, setTracing] = useState(false);
 
@@ -198,6 +204,7 @@ export const GisFtthPage: React.FC = () => {
     PELANGGAN: true,
     JOINT_CLOSURE: true,
     POP: true,
+    SPLITTER: true,
     CABLES: true
   });
 
@@ -419,7 +426,7 @@ export const GisFtthPage: React.FC = () => {
           );
           showToast(`Posisi ${obj.code} diperbarui.`);
         } catch (err: any) {
-          alert('Gagal memindahkan objek: ' + err.message);
+          showToast('Gagal memindahkan objek: ' + err.message);
           marker.setLatLng([obj.latitude, obj.longitude]);
         }
       });
@@ -468,9 +475,55 @@ export const GisFtthPage: React.FC = () => {
         </div>
       `);
 
+      polyline.on('click', () => {
+        setSelectedCable(cable);
+        setSelectedObject(null);
+        setTraceResult(null);
+      });
+
       group.addLayer(polyline);
     });
   }, [cables, layerVisibility.CABLES]);
+
+  // Target Focus when navigating from Data Pelanggan
+  useEffect(() => {
+    if (!targetFocus || !mapInstanceRef.current) return;
+    const { id, lat, lng } = targetFocus;
+    if (lat && lng) {
+      mapInstanceRef.current.flyTo([lat, lng], 18, { duration: 1.5 });
+      if (id) {
+        const found = objects.find((o) => o.id === id || o.code === id);
+        if (found) {
+          setSelectedObject(found);
+          setSelectedCable(null);
+        }
+        const marker = markersRef.current[id];
+        if (marker) {
+          marker.openPopup();
+        }
+      }
+    }
+  }, [targetFocus, objects]);
+
+  // Keyboard Shortcuts for Undo & Redo (Ctrl+Z & Ctrl+Y)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          handleRedo();
+        } else {
+          e.preventDefault();
+          handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undoStack, redoStack]);
 
   // Search objects by name or code
   useEffect(() => {
@@ -539,9 +592,15 @@ export const GisFtthPage: React.FC = () => {
         setRedoStack((prev) => [action, ...prev]);
         setUndoStack(remainingUndo);
         showToast(`Undo: Objek ${action.object.code} dipulihkan.`);
+      } else if (action.type === 'DELETE_CABLE' && action.cable) {
+        const res = await api.saveGisCable(action.cable);
+        setCables((prev) => [...prev, res.cable]);
+        setRedoStack((prev) => [action, ...prev]);
+        setUndoStack(remainingUndo);
+        showToast(`Undo: Kabel ${action.cable.cable_code} dipulihkan.`);
       }
     } catch (err: any) {
-      alert('Gagal mengeksekusi Undo: ' + err.message);
+      showToast('Gagal mengeksekusi Undo: ' + err.message);
     }
   };
 
@@ -584,26 +643,47 @@ export const GisFtthPage: React.FC = () => {
         setUndoStack((prev) => [action, ...prev]);
         setRedoStack(remainingRedo);
         showToast(`Redo: Objek ${action.object.code} dihapus.`);
+      } else if (action.type === 'DELETE_CABLE' && action.cable) {
+        await api.deleteGisCable(action.cable.id);
+        setCables((prev) => prev.filter((c) => c.id !== action.cable!.id));
+        setUndoStack((prev) => [action, ...prev]);
+        setRedoStack(remainingRedo);
+        showToast(`Redo: Kabel ${action.cable.cable_code} dihapus.`);
       }
     } catch (err: any) {
-      alert('Gagal mengeksekusi Redo: ' + err.message);
+      showToast('Gagal mengeksekusi Redo: ' + err.message);
     }
   };
 
   // Delete Object
   const handleDeleteSelectedObject = async () => {
     if (!selectedObject) return;
-    if (!confirm(`Hapus objek ${selectedObject.code} (${selectedObject.name}) dari database?`)) return;
 
     try {
       await api.deleteGisObject(selectedObject.id);
       setUndoStack((prev) => [{ type: 'DELETE_OBJECT', object: selectedObject }, ...prev]);
       setRedoStack([]);
       setObjects((prev) => prev.filter((o) => o.id !== selectedObject.id));
-      showToast(`Objek ${selectedObject.code} berhasil dihapus.`);
+      showToast(`Objek ${selectedObject.code} berhasil dihapus (dapat di-Undo).`);
       setSelectedObject(null);
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus objek');
+      showToast(err.message || 'Gagal menghapus objek');
+    }
+  };
+
+  // Delete Cable
+  const handleDeleteSelectedCable = async () => {
+    if (!selectedCable) return;
+
+    try {
+      await api.deleteGisCable(selectedCable.id);
+      setUndoStack((prev) => [{ type: 'DELETE_CABLE', cable: selectedCable }, ...prev]);
+      setRedoStack([]);
+      setCables((prev) => prev.filter((c) => c.id !== selectedCable.id));
+      showToast(`Kabel ${selectedCable.cable_code} berhasil dihapus (dapat di-Undo).`);
+      setSelectedCable(null);
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menghapus rute kabel');
     }
   };
 
@@ -636,7 +716,7 @@ export const GisFtthPage: React.FC = () => {
       setActiveTool('PAN');
       showToast(`Objek baru ${res.object.code} berhasil dibuat.`);
     } catch (err: any) {
-      alert('Gagal menambahkan objek GIS: ' + err.message);
+      showToast('Gagal menambahkan objek GIS: ' + err.message);
     } finally {
       setSubmittingObject(false);
     }
@@ -646,7 +726,7 @@ export const GisFtthPage: React.FC = () => {
   const handleSaveCable = async (e: React.FormEvent) => {
     e.preventDefault();
     if (drawnVertices.length < 2) {
-      alert('Kabel minimal harus memiliki 2 titik koordinat.');
+      showToast('Kabel minimal harus memiliki 2 titik koordinat.');
       return;
     }
 
@@ -675,7 +755,7 @@ export const GisFtthPage: React.FC = () => {
       loadGisData();
       showToast(`Rute kabel ${cableCode} berhasil disimpan.`);
     } catch (err: any) {
-      alert('Gagal menyimpan rute kabel: ' + err.message);
+      showToast('Gagal menyimpan rute kabel: ' + err.message);
     } finally {
       setSubmittingCable(false);
     }
@@ -689,7 +769,7 @@ export const GisFtthPage: React.FC = () => {
       const res = await api.traceTopologyImpact(selectedObject.id);
       setTraceResult(res);
     } catch (err: any) {
-      alert(err.message || 'Gagal menjalankan analisis dampak');
+      showToast(err.message || 'Gagal menjalankan analisis dampak');
     } finally {
       setTracing(false);
     }
@@ -712,7 +792,7 @@ export const GisFtthPage: React.FC = () => {
       const data = await api.getOntRealtime(sn);
       setOntRealtimeData(data);
     } catch (err: any) {
-      alert('Gagal mengambil telemetri ONT: ' + err.message);
+      showToast('Gagal mengambil telemetri ONT: ' + err.message);
     } finally {
       setOntRealtimeLoading(false);
     }
@@ -809,15 +889,15 @@ export const GisFtthPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Delete Button for Selected Object */}
-          {selectedObject && (
+          {/* Delete Button for Selected Object or Cable */}
+          {(selectedObject || selectedCable) && (
             <button
-              onClick={handleDeleteSelectedObject}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/70 border border-rose-800/80 text-rose-300 hover:bg-rose-900 text-xs font-medium transition active:scale-95"
-              title={`Hapus objek ${selectedObject.code}`}
+              onClick={selectedObject ? handleDeleteSelectedObject : handleDeleteSelectedCable}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/70 border border-rose-800/80 text-rose-300 hover:bg-rose-900 text-xs font-semibold transition active:scale-95 cursor-pointer shadow-sm shadow-rose-950"
+              title={selectedObject ? `Hapus objek ${selectedObject.code}` : `Hapus kabel ${selectedCable?.cable_code}`}
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Hapus Objek</span>
+              <span>{selectedObject ? `Hapus Objek (${selectedObject.code})` : `Hapus Kabel (${selectedCable?.cable_code})`}</span>
             </button>
           )}
         </div>
@@ -1041,6 +1121,79 @@ export const GisFtthPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Selected Cable Detail Inspector (Side overlay) */}
+        {!selectedObject && selectedCable && (
+          <div className="absolute top-3 right-3 bottom-3 w-80 sm:w-96 z-10 p-5 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-slate-800 text-xs shadow-2xl overflow-y-auto flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800/60 font-mono">
+                    {selectedCable.cable_type}
+                  </span>
+                  <h3 className="font-bold text-sm text-white">{selectedCable.cable_code}</h3>
+                </div>
+                <button
+                  onClick={() => setSelectedCable(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="py-4 space-y-3">
+                <div>
+                  <span className="text-slate-400">Nama Kabel Fiber:</span>
+                  <div className="text-slate-200 font-semibold mt-0.5">{selectedCable.cable_name}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 font-mono text-[11px]">
+                  <div>
+                    <span className="text-slate-500">Jumlah Core:</span>
+                    <div className="text-slate-200 font-bold">{selectedCable.core_count} Core</div>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Panjang Kabel:</span>
+                    <div className="text-cyan-400 font-bold">{selectedCable.calculated_length_m} meter</div>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-slate-400">Status Saluran:</span>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                        selectedCable.status === 'ACTIVE'
+                          ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/80'
+                          : 'bg-rose-950/80 text-rose-300 border border-rose-800/80'
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${selectedCable.status === 'ACTIVE' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                      {selectedCable.status}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+                  <div className="font-semibold text-slate-300">Detail Multi-Segment Vertices:</div>
+                  <div>• Jumlah Titik Jalur: <b>{selectedCable.vertices?.length || 0} Titik</b></div>
+                  <div className="text-[10px] text-slate-500">Kabel digambar mengikuti rute tarikan tiang ODP dan drop wire rumah pelanggan.</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex justify-between items-center">
+              <span className="text-[10px] text-slate-500">Tersimpan di Database</span>
+              <button
+                onClick={handleDeleteSelectedCable}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-300 hover:text-white bg-rose-950/60 hover:bg-rose-900 border border-rose-800/80 rounded-xl transition cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus Rute Kabel</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ======================================================== */}
@@ -1050,7 +1203,7 @@ export const GisFtthPage: React.FC = () => {
         isOpen={isOntModalOpen}
         onClose={() => setIsOntModalOpen(false)}
         title={`Status Realtime ONT - ${selectedOntSerial}`}
-        maxWidth="max-w-2xl"
+        maxWidth="2xl"
       >
         {ontRealtimeLoading ? (
           <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400">
@@ -1062,7 +1215,10 @@ export const GisFtthPage: React.FC = () => {
             {/* Top Status Banner */}
             <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between">
               <div>
-                <div className="text-xs text-slate-400">Model & Vendor Perangkat:</div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <span>Model & Vendor Perangkat</span>
+                  <span className="px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 text-[10px] font-mono border border-cyan-800/50">GenieACS</span>
+                </div>
                 <div className="text-base font-bold text-white flex items-center gap-2 mt-0.5">
                   <span>{ontRealtimeData.vendor} {ontRealtimeData.model}</span>
                   <span className="text-xs font-normal text-cyan-400 font-mono">({ontRealtimeData.serial_number})</span>
@@ -1070,7 +1226,10 @@ export const GisFtthPage: React.FC = () => {
               </div>
 
               <div className="text-right">
-                <div className="text-xs text-slate-400">Status PON OLT C320:</div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-400 justify-end">
+                  <span>Status Aktif</span>
+                  <span className="px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 text-[10px] font-mono border border-purple-800/50">SNMP OLT-C320</span>
+                </div>
                 <div className="flex items-center gap-1.5 mt-0.5 justify-end">
                   <span
                     className={`w-2 h-2 rounded-full ${
@@ -1082,7 +1241,7 @@ export const GisFtthPage: React.FC = () => {
                       ontRealtimeData.olt_status === 'working' ? 'text-emerald-400' : 'text-rose-400'
                     }`}
                   >
-                    {ontRealtimeData.olt_status}
+                    {ontRealtimeData.olt_status} (Working / Normal)
                   </span>
                 </div>
               </div>
@@ -1091,13 +1250,19 @@ export const GisFtthPage: React.FC = () => {
             {/* Optical Power Gauge Meter */}
             <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-950 to-slate-900 border border-slate-800">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-200">Power Optik RX / TX (GenieACS TR-069)</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-200">Power Optik RX / TX</span>
+                  <span className="px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 text-[10px] font-mono border border-cyan-800/50">GenieACS</span>
+                </div>
                 <span className="text-[11px] text-cyan-400 font-medium">Standar Ideal: -15 dBm s/d -24 dBm</span>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800/80">
-                  <div className="text-[11px] text-slate-400">RX Power (Penerimaan)</div>
+                  <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                    <span>Power RX (Penerimaan)</span>
+                    <span className="text-[10px] text-cyan-400 font-mono">GenieACS</span>
+                  </div>
                   <div className="text-2xl font-bold font-mono text-emerald-400 mt-1">
                     {ontRealtimeData.power_rx_dbm} <span className="text-xs font-normal text-slate-400">dBm</span>
                   </div>
@@ -1105,7 +1270,10 @@ export const GisFtthPage: React.FC = () => {
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800/80">
-                  <div className="text-[11px] text-slate-400">TX Power (Pengiriman)</div>
+                  <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                    <span>Power TX (Pengiriman)</span>
+                    <span className="text-[10px] text-cyan-400 font-mono">GenieACS</span>
+                  </div>
                   <div className="text-2xl font-bold font-mono text-cyan-400 mt-1">
                     {ontRealtimeData.power_tx_dbm} <span className="text-xs font-normal text-slate-400">dBm</span>
                   </div>
@@ -1118,9 +1286,12 @@ export const GisFtthPage: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {/* Temperature */}
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div className="flex items-center gap-1.5 text-slate-400 text-[11px] mb-1">
-                  <Thermometer className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Suhu Operasional</span>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Thermometer className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Suhu ONT</span>
+                  </div>
+                  <span className="text-[9px] text-cyan-400 font-mono">GenieACS</span>
                 </div>
                 <div className="text-lg font-bold text-white font-mono">{ontRealtimeData.temperature_c} °C</div>
                 <div className="text-[10px] text-slate-500 mt-0.5">Batas aman: &lt; 65 °C</div>
@@ -1128,9 +1299,12 @@ export const GisFtthPage: React.FC = () => {
 
               {/* Voltage */}
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div className="flex items-center gap-1.5 text-slate-400 text-[11px] mb-1">
-                  <Zap className="w-3.5 h-3.5 text-yellow-400" />
-                  <span>Tegangan Suplai</span>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-yellow-400" />
+                    <span>Tegangan Suplai</span>
+                  </div>
+                  <span className="text-[9px] text-cyan-400 font-mono">GenieACS</span>
                 </div>
                 <div className="text-lg font-bold text-white font-mono">{ontRealtimeData.voltage_v} V</div>
                 <div className="text-[10px] text-slate-500 mt-0.5">Voltase DC stabil 3.3V</div>
@@ -1138,33 +1312,42 @@ export const GisFtthPage: React.FC = () => {
 
               {/* Ping Latency */}
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div className="flex items-center gap-1.5 text-slate-400 text-[11px] mb-1">
-                  <Activity className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Ping / Latensi ICMP</span>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Latency / Ping</span>
+                  </div>
+                  <span className="text-[9px] text-emerald-400 font-mono">Ping</span>
                 </div>
                 <div className="text-lg font-bold text-emerald-400 font-mono">
                   {ontRealtimeData.ping_latency_ms !== null ? `${ontRealtimeData.ping_latency_ms} ms` : 'N/A'}
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">Loss: {ontRealtimeData.ping_packet_loss_pct}%</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">Packet Loss: {ontRealtimeData.ping_packet_loss_pct}%</div>
               </div>
 
               {/* WiFi SSID */}
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div className="flex items-center gap-1.5 text-slate-400 text-[11px] mb-1">
-                  <Wifi className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>WiFi SSID</span>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Wifi className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>WiFi SSID</span>
+                  </div>
+                  <span className="text-[9px] text-cyan-400 font-mono">GenieACS</span>
                 </div>
                 <div className="text-xs font-semibold text-white truncate" title={ontRealtimeData.wifi_ssid}>
                   {ontRealtimeData.wifi_ssid}
                 </div>
-                <div className="text-[10px] text-cyan-400 mt-0.5">{ontRealtimeData.wifi_active_clients} Klien Aktif</div>
+                <div className="text-[10px] text-cyan-400 mt-0.5 font-medium">{ontRealtimeData.wifi_active_clients} Klien Aktif</div>
               </div>
 
               {/* Interface PON OLT */}
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div className="flex items-center gap-1.5 text-slate-400 text-[11px] mb-1">
-                  <Server className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Interface PON OLT</span>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Server className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Interface PON</span>
+                  </div>
+                  <span className="text-[9px] text-purple-400 font-mono">SNMP OLT-C320</span>
                 </div>
                 <div className="text-xs font-mono font-semibold text-purple-300">
                   {ontRealtimeData.pon_interface}
@@ -1174,9 +1357,12 @@ export const GisFtthPage: React.FC = () => {
 
               {/* IP & MAC */}
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div className="flex items-center gap-1.5 text-slate-400 text-[11px] mb-1">
-                  <Globe className="w-3.5 h-3.5 text-blue-400" />
-                  <span>IP & MAC Address</span>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-blue-400" />
+                    <span>IP & MAC Address</span>
+                  </div>
+                  <span className="text-[9px] text-cyan-400 font-mono">GenieACS</span>
                 </div>
                 <div className="text-xs font-mono font-semibold text-white">{ontRealtimeData.ip_address}</div>
                 <div className="text-[10px] font-mono text-slate-500 truncate">{ontRealtimeData.mac_address}</div>

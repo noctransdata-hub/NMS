@@ -33,8 +33,9 @@ Aplikasi ini dibangun untuk operasional nyata penyedia jasa internet (ISP) denga
    - [A. Konfigurasi SNMP pada MikroTik RouterOS](#a-konfigurasi-snmp-pada-mikrotik-routeros)
    - [B. Konfigurasi SNMP pada OLT ZTE / Huawei / VSOL](#b-konfigurasi-snmp-pada-olt-zte--huawei--vsol)
    - [C. Integrasi GenieACS NBI](#c-integrasi-genieacs-nbi)
-7. [Panduan Modul GIS FTTH](#7-panduan-modul-gis-ftth)
-8. [Pemeliharaan & Troubleshooting](#8-pemeliharaan--troubleshooting)
+7. [Panduan Modul Data Pelanggan & Paket Layanan (Billing)](#7-panduan-modul-data-pelanggan--paket-layanan-billing)
+8. [Panduan Modul GIS FTTH Google Maps Platform & Telemetri Realtime ONT](#8-panduan-modul-gis-ftth-google-maps-platform--telemetri-realtime-ont)
+9. [Pemeliharaan & Troubleshooting](#9-pemeliharaan--troubleshooting)
 
 ---
 
@@ -458,7 +459,86 @@ Jika GenieACS terinstal di server yang sama atau terpisah, pastikan file konfigu
 
 ---
 
-## 8. Pemeliharaan & Troubleshooting
+## 7. Panduan Modul Data Pelanggan & Paket Layanan (Billing)
+
+Transdata NMS menyediakan modul komprehensif untuk pengelolaan paket layanan internet dan siklus hidup pelanggan ISP yang terhubung langsung ke database MariaDB dan MikroTik RouterOS API:
+
+### A. Setting Paket Layanan (Billing & Bandwidth)
+1. **Nama Paket**: Format teks & angka (misal: `HOME 20 Mbps`, `BISNIS 50 Mbps`) — tersimpan di tabel `packages`.
+2. **Tagihan (Rp)**: Besaran tarif bulanan format angka nominal (misal: `Rp 250.000`) — tersimpan di kolom `price` database.
+3. **Kapasitas Bandwidth**: Alokasi bandwidth simetris/asimetris (misal: `20 Mbps`, `50 Mbps`) — tersimpan di kolom `bandwidth` database.
+4. **Profil MikroTik**: Nama profil PPP secret di router MikroTik yang memiliki limitasi *rate-limit* rx/tx untuk pelanggan.
+
+### B. Registrasi & Edit Data Pelanggan
+Form registrasi dan formulir edit tabel pelanggan mendukung field data lengkap:
+- **Nama Pelanggan** (*Format text, Wajib diisi*)
+- **Nomor KTP / NIK** (*Format angka 16 digit, Wajib diisi*)
+- **Alamat Pelanggan** (*Format teks alamat / koordinat Google Maps, Wajib diisi*)
+- **Nomor WhatsApp / HP** (*Format numerik aktif, Wajib diisi*)
+- **Email Pelanggan** (*Format teks & angka, Opsional*)
+- **Layanan / Paket** (*Dropdown dinamis dari database Setting Paket Layanan*)
+- **Distribusi ODP** (*Dropdown dinamis dari data node ODP/FAT Map FTTH GIS*)
+- **Serial Number ONT** (*Format teks & angka SN ONT, masuk database*)
+- **Model ONT** (*Format teks & angka tipe perangkat CPE, masuk database*)
+- **Akun PPPoE**: Username dan password untuk autentikasi ke MikroTik RouterOS.
+
+### C. Tabel Pelanggan & Aksi Operasional
+Tabel pelanggan menampilkan ringkasan operasional dengan fitur pencarian instan dan pengurutan (*sorting*) setiap kolom:
+- **Pencarian Realtime**: Mencari data berdasarkan nama pelanggan, NIK, alamat rumah, nomor WhatsApp, PPPoE username, atau Serial Number ONT.
+- **Pengurutan Kolom**: Klik pada header kolom untuk mengurutkan *asc / desc*.
+- **Status Pelanggan**:
+  - `Aktif`: Koneksi PPPoE aktif pada MikroTik.
+  - `Isolir`: Akun PPPoE secret dialihkan ke profile isolir dan diberi komentar tanggal isolir.
+  - `Down`: Terdeteksi sinyal optik terputus (LOS atau Dying Gasp pada OLT ZTE C320).
+- **Aksi Operasional Terintegrasi**:
+  1. **Isolir (MikroTik API)**:
+     - Mengubah *profile* pada `/ppp/secret` menjadi `isolir`.
+     - Memberikan *comment* pada secret dengan timestamp: `isolir/YYYY-MM-DD HH:MM:SS`.
+     - Memutus sesi aktif di `/ppp/active` berdasarkan username PPPoE pelanggan secara seketika.
+  2. **Buka Isolir (MikroTik API)**:
+     - Mengembalikan *profile* secret ke profile paket layanan semula.
+     - Membersihkan komentar isolir pada MikroTik.
+  3. **Kirim Pengingat Tagihan (WhatsApp API)**:
+     - Menghasilkan tautan resmi `wa.me` lengkap dengan pesan tagihan terformat mencakup nama pelanggan, no. pelanggan, nama paket, total tagihan, tanggal jatuh tempo, dan rekening transfer ISP.
+  4. **Tampilkan Lokasi di Google Maps**:
+     - Melakukan navigasi otomatis (*fly-to*) ke koordinat rumah pelanggan di Map FTTH GIS dan menyorot sambungan kabel dropcore ke ODP terhubung.
+  5. **Edit & Hapus Pelanggan**:
+     - Memperbarui data atau menghapus data pelanggan dari database MariaDB.
+
+---
+
+## 8. Panduan Modul GIS FTTH Google Maps Platform & Telemetri Realtime ONT
+
+Modul GIS FTTH dirancang untuk visualisasi topologi fisik jaringan kabel optik berbasis Google Maps Platform:
+
+### A. Lapisan Peta Google Maps Platform
+- Mendukung lapisan peta satelit presisi tinggi: **Google Satelit (Hybrid)**, **Google Roadmap (Jalan)**, dan **Google Kontur (Terrain)**.
+- Menampilkan penempatan tiang ODP, ODC, OLT, FAT, Joint Closure, serta tarikan kabel *dropcore*, *distribution*, dan *feeder*.
+- Marker objek interaktif yang dapat digeser secara presisi (*drag and drop* koordinat).
+
+### B. Telemetri Realtime ONT (11 Parameter Aktual)
+Saat node pelanggan atau ONT diinspeksi, operator dapat membuka modal **Status Realtime ONT** yang menyajikan 11 metrik:
+1. **Power TX & RX (dBm)**: `GenieACS TR-069` (Nilai daya penerimaan dan pengiriman laser optik dengan gauge indikator).
+2. **Model & Vendor**: `GenieACS TR-069` (Pabrikan dan tipe ONT, misal ZTE F609).
+3. **Suhu Operasional (°C)**: `GenieACS TR-069` (Suhu internal sirkuit ONT).
+4. **Tegangan Suplai (Volt)**: `GenieACS TR-069` (Voltase DC modul optik).
+5. **WiFi SSID**: `GenieACS TR-069` (Nama SSID nirkabel yang aktif).
+6. **Klien Aktif**: `GenieACS TR-069` (Jumlah perangkat gadget terhubung ke WiFi).
+7. **Status Aktif**: `SNMP OLT ZTE C320` (Working, LOS / Loss of Signal, atau Dying Gasp).
+8. **Interface PON**: `SNMP OLT ZTE C320` (Port antarmuka PON pada OLT, misal `gpon-olt_1/1/2:4`).
+9. **IP Address**: `GenieACS TR-069` (Alamat IP WAN / Management ONT).
+10. **Latency & Packet Loss**: `Ping ICMP` (Uji latensi round-trip ping langsung dari server).
+11. **MAC Address**: `GenieACS TR-069` (Alamat fisik MAC antarmuka jaringan ONT).
+
+### C. Kontrol Undo, Redo, Delete, dan Search
+- **Tombol Undo (Ctrl+Z)**: Membatalkan perpindahan titik koordinat tiang ODP/ODC/ONT, pembatalan penambahan node, atau pemulihan rute kabel yang terhapus.
+- **Tombol Redo (Ctrl+Y)**: Mengaplikasikan ulang tindakan yang telah di-undo.
+- **Tombol Delete**: Menghapus objek node terpilih atau rute kabel terpilih dari database MariaDB.
+- **Tombol Search**: Fitur pencarian instan untuk melompat langsung ke tiang ODP, ODC, OLT, atau rumah pelanggan.
+
+---
+
+## 9. Pemeliharaan & Troubleshooting
 
 ### Memeriksa Status Layanan Utama
 ```bash

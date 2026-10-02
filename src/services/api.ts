@@ -8,7 +8,10 @@ import {
   GenieAcsDevice,
   Alarm,
   AuditLog,
-  DashboardSummary
+  DashboardSummary,
+  Package,
+  Customer,
+  OntRealtimeData
 } from '../types/nms';
 import { FtthObject, FtthCable, TopologyTraceResult } from '../types/gis';
 

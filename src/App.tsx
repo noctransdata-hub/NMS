@@ -17,6 +17,7 @@ import { MikrotikPage } from './pages/MikrotikPage';
 import { GenieAcsPage } from './pages/GenieAcsPage';
 import { GisFtthPage } from './pages/GisFtthPage';
 import { CustomersPage } from './pages/CustomersPage';
+import { PackagesPage } from './pages/PackagesPage';
 import { AlarmsPage } from './pages/AlarmsPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -29,10 +30,18 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentTab, setCurrentTab] = useState<NavItem>('dashboard');
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
+  const [gisTarget, setGisTarget] = useState<{ id?: string; lat?: number; lng?: number } | null>(null);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
   const [activeAlarmCount, setActiveAlarmCount] = useState(0);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
+
+  useEffect(() => {
+    const handleQuota = () => setQuotaExceeded(true);
+    window.addEventListener('gmp-quota-exceeded', handleQuota);
+    return () => window.removeEventListener('gmp-quota-exceeded', handleQuota);
+  }, []);
 
   // 1. Initial System Status Check
   const checkStatus = async () => {
@@ -123,6 +132,23 @@ export default function App() {
   // Authenticated NMS Operational Interface
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
+      {quotaExceeded && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
+          <span>
+            Google Maps Platform quota reached. If you are the app owner, visit{' '}
+            <a
+              href="https://developers.google.com/maps/ai/ai-studio?utm_campaign=gmp_mcp_codeassist_v1_aistudio#quota_exceeded_errors"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-semibold text-amber-950 hover:text-amber-800"
+            >
+              maps developer site
+            </a>{' '}
+            for instructions to update your account.
+          </span>
+        </div>
+      )}
+
       <Navbar
         user={currentUser}
         systemStatus={systemStatus}
@@ -172,10 +198,13 @@ export default function App() {
                 <CustomersPage
                   onNavigateToMap={(targetId, lat, lng) => {
                     setSelectedDeviceId(null);
+                    setGisTarget({ id: targetId, lat, lng });
                     setCurrentTab('gis');
                   }}
                 />
               )}
+
+              {currentTab === 'packages' && <PackagesPage />}
 
               {currentTab === 'devices' && (
                 <DevicesPage
@@ -190,7 +219,12 @@ export default function App() {
 
               {currentTab === 'genieacs' && <GenieAcsPage />}
 
-              {currentTab === 'gis' && <GisFtthPage />}
+              {currentTab === 'gis' && (
+                <GisFtthPage
+                  targetFocus={gisTarget}
+                  onClearTarget={() => setGisTarget(null)}
+                />
+              )}
 
               {currentTab === 'alarms' && <AlarmsPage />}
 
